@@ -1,18 +1,16 @@
-FROM node:18-alpine
+FROM nginx:alpine
 
-WORKDIR /app
+WORKDIR /usr/share/nginx/html
 
-# Copy package files
-COPY package*.json ./
+# Copy static files
+COPY index.html .
+COPY app.js .
+COPY style.css .
 
-# Install dependencies
-RUN npm install
-
-# Copy application code
-COPY . .
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port
 EXPOSE 3000
 
-# Start development server
-CMD ["npm", "start"]
+CMD ["nginx", "-g", "daemon off;"]
