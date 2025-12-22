@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with TimescaleDB
+  database:
+    image: timescale/timescaledb:latest-pg15
+    container_name: timeline-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-timeline}
+      POSTGRES_USER: ${POSTGRES_USER:-timeline_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - timeline-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timeline_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data Ingestion Layer
+  ingestion:
+    build:
+      context: ./ingestion
+      dockerfile: Dockerfile
+    container_name: timeline-ingestion
+    environment:
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-timeline}
+      DB_USER: ${POSTGRES_USER:-timeline_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - timeline-network
+    volumes:
+      - ./ingestion:/app
+      - ingestion_data:/data
+
+  # ETL Layer
+  etl:
+    build:
+      context: ./etl
+      dockerfile: Dockerfile
+    container_name: timeline-etl
+    environment:
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-timeline}
+      DB_USER: ${POSTGRES_USER:-timeline_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
+    depends_on:
+      database:
+        condition: service_healthy
+      ingestion:
+        condition: service_started
+    networks:
+      - timeline-network
+    volumes:
+      - ./etl:/app
+
+  # API Layer
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: timeline-api
+    environment:
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-timeline}
+      DB_USER: ${POSTGRES_USER:-timeline_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
+      API_PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+      etl:
+        condition: service_started
+    networks:
+      - timeline-network
+    volumes:
+      - ./api:/app
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: timeline-frontend
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - timeline-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+networks:
+  timeline-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  ingestion_data:
