@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Timeline - Wikipedia Events</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📜 Historical Timeline</h1>
+            <p class="subtitle">Interactive timeline of historical events from Wikipedia</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="search-input">Search Events:</label>
+                <input type="text" id="search-input" placeholder="Search historical events...">
+                <button id="search-btn">Search</button>
+            </div>
+            
+            <div class="control-group">
+                <label for="category-select">Filter by Category:</label>
+                <select id="category-select">
+                    <option value="">All Categories</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <button id="reset-zoom-btn">Reset Zoom</button>
+                <button id="refresh-btn">Refresh Data</button>
+            </div>
+        </div>
+
+        <div class="stats-panel">
+            <div class="stat-box">
+                <span class="stat-label">Total Events:</span>
+                <span id="total-events" class="stat-value">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Time Range:</span>
+                <span id="time-range" class="stat-value">-</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Loaded Events:</span>
+                <span id="loaded-events" class="stat-value">0</span>
+            </div>
+        </div>
+
+        <div id="timeline-container">
+            <svg id="timeline"></svg>
+        </div>
+
+        <div id="event-details" class="event-details hidden">
+            <div class="event-details-header">
+                <h2 id="event-title"></h2>
+                <button id="close-details-btn">&times;</button>
+            </div>
+            <div class="event-details-content">
+                <p><strong>Time Period:</strong> <span id="event-period"></span></p>
+                <p><strong>Category:</strong> <span id="event-category"></span></p>
+                <p id="event-description"></p>
+                <a id="event-wikipedia-link" href="#" target="_blank">Read more on Wikipedia →</a>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>How to Use:</h3>
+            <ul>
+                <li><strong>Zoom:</strong> Scroll up/down to zoom in/out on the timeline</li>
+                <li><strong>Pan:</strong> Click and drag to move along the timeline</li>
+                <li><strong>Select Event:</strong> Click on any event marker to see details</li>
+                <li><strong>Filter:</strong> Use the category dropdown to filter events by type</li>
+                <li><strong>Search:</strong> Search for specific events by keyword</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="timeline.js"></script>
+</body>
+</html>
