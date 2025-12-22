@@ -3,8 +3,6 @@ CREATE TABLE IF NOT EXISTS historical_events (
     id SERIAL PRIMARY KEY,
     title VARCHAR(500) NOT NULL,
     description TEXT,
-    start_date DATE,
-    end_date DATE,
     start_year INTEGER,
     end_year INTEGER,
     is_bc_start BOOLEAN DEFAULT FALSE,

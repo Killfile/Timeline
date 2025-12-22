@@ -3,9 +3,7 @@ import time
 import re
 import psycopg2
 import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
-import json
 
 # Database configuration
 DB_CONFIG = {

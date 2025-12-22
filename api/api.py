@@ -64,7 +64,7 @@ def get_db_connection():
         raise HTTPException(status_code=503, detail=f"Database connection failed: {str(e)}")
 
 
-def format_year_display(year: int, is_bc: bool) -> str:
+def format_year_display(year: Optional[int], is_bc: bool) -> Optional[str]:
     """Format year for display."""
     if year is None:
         return None

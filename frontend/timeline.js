@@ -219,7 +219,7 @@ async function handleSearch() {
     const query = document.getElementById('search-input').value.trim();
     
     if (query.length < 3) {
-        alert('Please enter at least 3 characters to search');
+        showError('Please enter at least 3 characters to search');
         return;
     }
     
