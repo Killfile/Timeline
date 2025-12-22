@@ -10,7 +10,7 @@ This application consists of five interconnected tiers:
 2. **Data Ingestion Layer** - Python service that generates and ingests raw event data
 3. **ETL Layer** - Python service that transforms raw events into processed production data
 4. **API Layer** - FastAPI service that provides RESTful endpoints for data access
-5. **Frontend** - React application for visualizing and interacting with event data
+5. **Frontend** - HTML/JavaScript application for visualizing and interacting with event data
 
 ## Prerequisites
 
@@ -73,7 +73,7 @@ This application consists of five interconnected tiers:
 - `GET /sources` - List all data sources
 
 ### Frontend Service
-- React-based dashboard for data visualization
+- HTML/JavaScript dashboard for data visualization
 - Real-time updates (refreshes every 10 seconds)
 - Interactive charts and tables
 - Event filtering by type, source, and time range
@@ -114,7 +114,7 @@ docker-compose down -v
 1. **Ingestion** → Raw events are generated and stored in `raw_events` table
 2. **ETL** → Raw events are processed and transformed into `processed_events` table
 3. **API** → Processed events are exposed via REST endpoints
-4. **Frontend** → Data is visualized in the React dashboard
+4. **Frontend** → Data is visualized in the HTML/JavaScript dashboard
 
 ## Database Schema
 
