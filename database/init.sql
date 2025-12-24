@@ -7,6 +7,9 @@ CREATE TABLE IF NOT EXISTS historical_events (
     end_year INTEGER,
     is_bc_start BOOLEAN DEFAULT FALSE,
     is_bc_end BOOLEAN DEFAULT FALSE,
+    -- Derived metric: approximate span length in days.
+    -- We treat 1 year as 365 days for now.
+    weight INTEGER,
     category VARCHAR(100),
     wikipedia_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -44,6 +47,9 @@ CREATE TABLE IF NOT EXISTS event_date_extraction_debug (
     chosen_is_bc_start BOOLEAN DEFAULT FALSE,
     chosen_end_year INTEGER,
     chosen_is_bc_end BOOLEAN DEFAULT FALSE,
+
+    -- Derived metric aligned with historical_events.weight.
+    chosen_weight_days INTEGER,
 
     extract_snippet TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()

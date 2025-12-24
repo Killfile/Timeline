@@ -299,6 +299,35 @@ def insert_event(conn, event: dict, category: str | None):
     if not title or len(title) < 3:
         return False
 
+    def _compute_weight_days(e: dict) -> int | None:
+        """Approximate event span length in days.
+
+        Contract:
+        - Uses year-level granularity only (no months/days yet).
+        - 1 year => 365 days.
+        - If start/end missing or invalid, returns None.
+        """
+        try:
+            s = e.get("start_year")
+            end = e.get("end_year")
+            if s is None or end is None:
+                return None
+            s_i = int(s)
+            e_i = int(end)
+            # Some ingestion paths store year-as-exclusive-end (e.g. scope year => end = start+1).
+            # In that model, end-start is already "span in years".
+            span_years = abs(e_i - s_i)
+            # Treat single-year point spans (end==start) as 1 year.
+            if span_years == 0:
+                span_years = 1
+            return int(span_years) * 365
+        except Exception:
+            return None
+
+    # Ensure weight is present; allow caller override.
+    if event.get("weight") is None:
+        event["weight"] = _compute_weight_days(event)
+
     try:
         conn.rollback()
     except Exception:
@@ -306,8 +335,8 @@ def insert_event(conn, event: dict, category: str | None):
 
     insert_sql = """
         INSERT INTO historical_events
-            (title, description, start_year, end_year, is_bc_start, is_bc_end, category, wikipedia_url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (title, description, start_year, end_year, is_bc_start, is_bc_end, weight, category, wikipedia_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT ON CONSTRAINT uq_historical_events_identity DO NOTHING
         RETURNING id
     """
@@ -319,6 +348,7 @@ def insert_event(conn, event: dict, category: str | None):
         event.get("end_year"),
         event.get("is_bc_start", False),
         event.get("is_bc_end", False),
+        event.get("weight"),
         category,
         event.get("url"),
     )
@@ -337,8 +367,8 @@ def insert_event(conn, event: dict, category: str | None):
             cursor.execute(
                 """
                 INSERT INTO historical_events
-                    (title, description, start_year, end_year, is_bc_start, is_bc_end, category, wikipedia_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (title, description, start_year, end_year, is_bc_start, is_bc_end, weight, category, wikipedia_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 insert_params,
@@ -351,16 +381,23 @@ def insert_event(conn, event: dict, category: str | None):
 
         debug = event.get("_debug_extraction")
         if debug:
+            # Record weight for UI debugging.
+            debug_weight = debug.get("weight_days")
+            if debug_weight is None:
+                debug_weight = event.get("weight")
+
             cursor.execute(
                 """
                 INSERT INTO event_date_extraction_debug
                     (historical_event_id, pageid, title, category, wikipedia_url,
                      extraction_method, extracted_year_matches,
                      chosen_start_year, chosen_is_bc_start, chosen_end_year, chosen_is_bc_end,
+                     chosen_weight_days,
                      extract_snippet)
                 VALUES (%s, %s, %s, %s, %s,
                         %s, %s,
                         %s, %s, %s, %s,
+                        %s,
                         %s)
                 """,
                 (
@@ -375,6 +412,7 @@ def insert_event(conn, event: dict, category: str | None):
                     event.get("is_bc_start", False),
                     event.get("end_year"),
                     event.get("is_bc_end", False),
+                    debug_weight,
                     debug.get("snippet"),
                 ),
             )

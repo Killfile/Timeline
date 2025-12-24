@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS event_date_extraction_debug (
     chosen_end_year INTEGER,
     chosen_is_bc_end BOOLEAN DEFAULT FALSE,
 
+    -- Derived metric aligned with historical_events.weight.
+    chosen_weight_days INTEGER,
+
     extract_snippet TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

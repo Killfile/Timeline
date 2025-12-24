@@ -591,6 +591,7 @@ def ingest_wikipedia_list_of_years(conn) -> None:
                     "method": "list_of_years_events_and_trends",
                     "matches": [],
                     "snippet": b[:300],
+                    "weight_days": None,  # set below
                     "events_heading": item.get("events_heading"),
                     "h3_context": {"tag": tag, "month_bucket": month_bucket},
                     "scope": scope,
@@ -598,6 +599,15 @@ def ingest_wikipedia_list_of_years(conn) -> None:
                     "source_page": {"title": title, "url": canonical_url},
                 },
             }
+
+            # Keep debug payload explicit so the UI can show how weight was derived.
+            try:
+                span_years = abs(int(effective_end_year) - int(effective_start_year))
+                if span_years == 0:
+                    span_years = 1
+                event["_debug_extraction"]["weight_days"] = int(span_years) * 365
+            except Exception:
+                event["_debug_extraction"]["weight_days"] = None
 
             if insert_event(conn, event, category=category_value):
                 total_inserted += 1

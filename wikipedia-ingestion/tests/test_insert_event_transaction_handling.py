@@ -70,3 +70,35 @@ def test_insert_event_rolls_back_then_allows_next_insert(monkeypatch):
 
     # Second insert should succeed, proving we don't remain in a poisoned state.
     assert ingest.insert_event(fake_conn, event, category="year") is True
+
+
+def test_insert_event_includes_weight_days(monkeypatch):
+    """Weight should be computed as span-years * 365 and included in inserts."""
+    monkeypatch.setattr(ingest, "_require_psycopg2", lambda: None)
+
+    fake_cursor = _FakeCursor()
+    # For this test, no error on first execute.
+    fake_cursor._raise_first = False
+    fake_cursor.queue_fetchone((123,))
+    fake_conn = _FakeConn(fake_cursor)
+
+    event = {
+        "title": "Example",
+        "description": "x",
+        "start_year": 100,
+        "end_year": 110,  # 10-year span => 3650
+        "is_bc_start": False,
+        "is_bc_end": False,
+        "url": "https://en.wikipedia.org/wiki/Example",
+        "pageid": 1,
+        "_debug_extraction": {"method": "test", "matches": [], "snippet": "x"},
+    }
+
+    assert ingest.insert_event(fake_conn, event, category="year") is True
+
+    # First execute call should be historical_events insert.
+    first_sql, first_params = fake_cursor.execute_calls[0]
+    assert "INSERT INTO historical_events" in first_sql
+    # Ensure weight param is present and equals 3650.
+    assert 3650 in first_params
+

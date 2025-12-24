@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Label Position Test</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .test-group { }
+        .test-bar { fill: blue; }
+        .test-label { fill: red; text-anchor: middle; }
+    </style>
+</head>
+<body>
+    <h1>Label Position Test</h1>
+    <p>Blue bar from 100-200, red label should be at center (150)</p>
+    <svg width="800" height="200" style="border: 1px solid black;">
+        <g class="test-group" transform="translate(0, 100)">
+            <rect class="test-bar" x="100" y="-4" width="100" height="8"></rect>
+            <text class="test-label" x="150" y="0" dy="-12">Label at 150</text>
+        </g>
+    </svg>
+    
+    <h2>Timeline Frame</h2>
+    <iframe src="http://localhost:8080" width="100%" height="600"></iframe>
+    
+    <script>
+        // After a delay, inspect the timeline DOM
+        setTimeout(() => {
+            const frame = document.querySelector('iframe');
+            if (frame && frame.contentDocument) {
+                const groups = frame.contentDocument.querySelectorAll('.event-group');
+                console.log('Found', groups.length, 'event groups');
+                
+                // Inspect first span event
+                for (let i = 0; i < Math.min(5, groups.length); i++) {
+                    const group = groups[i];
+                    const transform = group.getAttribute('transform');
+                    const bar = group.querySelector('.timeline-span');
+                    const label = group.querySelector('.event-label');
+                    
+                    if (bar && bar.getAttribute('display') !== 'none') {
+                        console.log('Span event #' + i);
+                        console.log('  Group transform:', transform);
+                        console.log('  Bar x:', bar.getAttribute('x'), 'width:', bar.getAttribute('width'));
+                        console.log('  Label x:', label.getAttribute('x'), 'y:', label.getAttribute('y'));
+                        console.log('  Label text:', label.textContent.substring(0, 50));
+                    }
+                }
+            }
+        }, 3000);
+    </script>
+</body>
+</html>

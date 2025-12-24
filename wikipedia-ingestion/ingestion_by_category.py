@@ -112,6 +112,11 @@ def extract_event_details(pageid: int) -> dict | None:
                     "matches": best.matches,
                     "snippet": best.snippet,
                     "confidence": best.confidence,
+                    "weight_days": (
+                        None
+                        if best.start_year is None
+                        else (365 if best.end_year is None else max(1, abs(int(best.end_year) - int(best.start_year))) * 365)
+                    ),
                     "all_results": [
                         {
                             "method": r.method,

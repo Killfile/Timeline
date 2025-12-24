@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Viewport Loading Test</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <h1>Viewport Loading Test</h1>
+    <p>Open the console to see viewport loading logs.</p>
+    <p>The timeline should now show only the top 200 highest-weight events in the visible viewport.</p>
+    <p>Try zooming and panning to trigger viewport reload.</p>
+    
+    <div id="test-results"></div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000';
+        const resultsDiv = document.getElementById('test-results');
+        
+        async function testViewportAPI() {
+            // Test BC range
+            const testCases = [
+                { start: 900, end: 800, isBcStart: true, isBcEnd: true, desc: 'BC range (900-800 BC)' },
+                { start: 1, end: 100, isBcStart: false, isBcEnd: false, desc: 'AD range (1-100 AD)' },
+                { start: 100, end: 1, isBcStart: true, isBcEnd: false, desc: 'BC to AD crossing (100 BC - 1 AD)' }
+            ];
+            
+            for (const test of testCases) {
+                const url = `${API_URL}/events?viewport_start=${test.start}&viewport_end=${test.end}&viewport_is_bc_start=${test.isBcStart}&viewport_is_bc_end=${test.isBcEnd}&limit=5`;
+                console.log(`Testing: ${test.desc}`);
+                console.log(`URL: ${url}`);
+                
+                try {
+                    const response = await fetch(url);
+                    const events = await response.json();
+                    console.log(`✓ ${test.desc}: ${events.length} events returned`);
+                    
+                    const resultItem = document.createElement('div');
+                    resultItem.innerHTML = `<strong>${test.desc}:</strong> ${events.length} events returned`;
+                    resultItem.style.marginBottom = '10px';
+                    resultsDiv.appendChild(resultItem);
+                    
+                    if (events.length > 0) {
+                        console.log('  Sample event:', events[0].title, events[0].display_year);
+                    }
+                } catch (error) {
+                    console.error(`✗ ${test.desc}: ${error}`);
+                    
+                    const resultItem = document.createElement('div');
+                    resultItem.innerHTML = `<strong>${test.desc}:</strong> <span style="color: red;">Error: ${error.message}</span>`;
+                    resultItem.style.marginBottom = '10px';
+                    resultsDiv.appendChild(resultItem);
+                }
+            }
+        }
+        
+        testViewportAPI();
+    </script>
+</body>
+</html>

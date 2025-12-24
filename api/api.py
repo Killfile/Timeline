@@ -43,6 +43,7 @@ class HistoricalEvent(BaseModel):
     end_year: Optional[int] = None
     is_bc_start: bool = False
     is_bc_end: bool = False
+    weight: Optional[int] = None
     category: Optional[str] = None
     wikipedia_url: Optional[str] = None
     display_year: Optional[str] = None
@@ -65,12 +66,16 @@ class ExtractionDebug(BaseModel):
     chosen_is_bc_start: bool = False
     chosen_end_year: Optional[int] = None
     chosen_is_bc_end: bool = False
+    chosen_weight_days: Optional[int] = None
     extract_snippet: Optional[str] = None
     pageid: Optional[int] = None
     title: Optional[str] = None
     category: Optional[str] = None
     wikipedia_url: Optional[str] = None
     created_at: Optional[datetime] = None
+
+    # Convenience echo from historical_events (so UI has a stable place to read it)
+    event_weight: Optional[int] = None
 
 
 # Database connection helper
@@ -130,37 +135,94 @@ def get_events(
     start_year: Optional[int] = Query(None, description="Filter events starting from this year"),
     end_year: Optional[int] = Query(None, description="Filter events up to this year"),
     category: Optional[str] = Query(None, description="Filter by category"),
+    viewport_start: Optional[int] = Query(None, description="Viewport start year (for weight-based filtering)"),
+    viewport_end: Optional[int] = Query(None, description="Viewport end year (for weight-based filtering)"),
+    viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
+    viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
     limit: int = Query(100, ge=1, le=1000, description="Number of events to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination")
 ):
-    """Get historical events with optional filters."""
+    """Get historical events with optional filters.
+    
+    When viewport params are provided, this endpoint:
+    1. Pads viewport by 25% on each side
+    2. Filters to events that overlap the padded range
+    3. Orders by weight DESC
+    4. Returns top `limit` highest-weight events in viewport
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        query = """
-            SELECT id, title, description, start_year, end_year, 
-                   is_bc_start, is_bc_end, category, wikipedia_url
-            FROM historical_events 
-            WHERE 1=1
-        """
-        params = []
-        
-        if start_year is not None:
-            query += " AND start_year >= %s"
-            params.append(start_year)
-        
-        if end_year is not None:
-            query += " AND (end_year <= %s OR end_year IS NULL)"
-            params.append(end_year)
-        
-        if category:
-            query += " AND category = %s"
-            params.append(category)
-        
-        query += " ORDER BY start_year ASC NULLS LAST, end_year ASC NULLS LAST"
-        query += " LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
+        # If viewport is specified, compute padded range and filter by weight.
+        use_viewport_mode = (
+            viewport_start is not None
+            and viewport_end is not None
+            and viewport_is_bc_start is not None
+            and viewport_is_bc_end is not None
+        )
+
+        if use_viewport_mode:
+            # Convert BC years to negative for arithmetic.
+            vs = -viewport_start if viewport_is_bc_start else viewport_start
+            ve = -viewport_end if viewport_is_bc_end else viewport_end
+            vmin, vmax = min(vs, ve), max(vs, ve)
+            span = max(1, vmax - vmin)
+            padding = span * 0.25
+            padded_min = vmin - padding
+            padded_max = vmax + padding
+
+            # Filter events that overlap [padded_min, padded_max].
+            # Event overlaps if: (event_start <= padded_max) AND (event_end >= padded_min)
+            query = """
+                SELECT id, title, description, start_year, end_year,
+                       is_bc_start, is_bc_end, weight, category, wikipedia_url
+                FROM historical_events
+                WHERE weight IS NOT NULL
+                  AND start_year IS NOT NULL
+                  AND end_year IS NOT NULL
+                  AND (
+                      CASE WHEN is_bc_start THEN -start_year ELSE start_year END <= %s
+                  )
+                  AND (
+                      CASE WHEN is_bc_end THEN -end_year ELSE end_year END >= %s
+                  )
+            """
+            params = [padded_max, padded_min]
+
+            if category:
+                query += " AND category = %s"
+                params.append(category)
+
+            query += " ORDER BY weight DESC, start_year ASC"
+            query += " LIMIT %s"
+            params.append(limit)
+
+        else:
+            # Legacy mode: no viewport, just filter by start/end year and category.
+            query = """
+                SELECT id, title, description, start_year, end_year, 
+                       is_bc_start, is_bc_end, weight, category, wikipedia_url
+                FROM historical_events 
+                WHERE 1=1
+            """
+            params = []
+            
+            if start_year is not None:
+                query += " AND start_year >= %s"
+                params.append(start_year)
+            
+            if end_year is not None:
+                query += " AND (end_year <= %s OR end_year IS NULL)"
+                params.append(end_year)
+            
+            if category:
+                query += " AND category = %s"
+                params.append(category)
+            
+            query += " ORDER BY start_year ASC NULLS LAST, end_year ASC NULLS LAST"
+            query += " LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
         
         cursor.execute(query, params)
         events = cursor.fetchall()
@@ -185,8 +247,8 @@ def get_event(event_id: int):
     
     try:
         cursor.execute("""
-            SELECT id, title, description, start_year, end_year,
-                   is_bc_start, is_bc_end, category, wikipedia_url
+         SELECT id, title, description, start_year, end_year,
+             is_bc_start, is_bc_end, weight, category, wikipedia_url
             FROM historical_events 
             WHERE id = %s
         """, (event_id,))
@@ -216,23 +278,26 @@ def get_event_extraction_debug(event_id: int):
     try:
         cursor.execute(
             """
-            SELECT historical_event_id,
-                   extraction_method,
-                   extracted_year_matches,
-                   chosen_start_year,
-                   chosen_is_bc_start,
-                   chosen_end_year,
-                   chosen_is_bc_end,
-                   extract_snippet,
-                   pageid,
-                   title,
-                   category,
-                   wikipedia_url,
-                   created_at
-            FROM event_date_extraction_debug
-            WHERE historical_event_id = %s
-            ORDER BY created_at DESC
-            LIMIT 1
+         SELECT d.historical_event_id,
+             d.extraction_method,
+             d.extracted_year_matches,
+             d.chosen_start_year,
+             d.chosen_is_bc_start,
+             d.chosen_end_year,
+             d.chosen_is_bc_end,
+             d.chosen_weight_days,
+             d.extract_snippet,
+             d.pageid,
+             d.title,
+             d.category,
+             d.wikipedia_url,
+             d.created_at,
+             e.weight AS event_weight
+         FROM event_date_extraction_debug d
+         JOIN historical_events e ON e.id = d.historical_event_id
+         WHERE d.historical_event_id = %s
+         ORDER BY d.created_at DESC
+         LIMIT 1
             """,
             (event_id,),
         )

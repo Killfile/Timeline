@@ -71,3 +71,8 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Log to stdout/stderr in containers.
 - Make logs actionable (include context like IDs, category names, and response status codes).
 - Avoid logging secrets.
+
+## Running and Debugging
+
+- The frontend runs on http://localhost:3000 by default.
+- The API runs on http://localhost:8000 by default.
