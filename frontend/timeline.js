@@ -5,36 +5,38 @@ const API_URL = window.location.protocol + '//' + window.location.hostname + ':8
 const MAX_VISIBLE_EVENTS = 200;  // Tunable: how many highest-weight events to show at once
 
 // Extract the first sentence for compact UI labels.
-// We avoid heavy NLP here; we just find the first real sentence terminator.
+// Remove date prefixes and limit to 30 characters.
 function firstSentence(text) {
     if (!text) return '';
-    const s = String(text).replace(/\s+/g, ' ').trim();
+    let s = String(text).replace(/\s+/g, ' ').trim();
     if (!s) return '';
 
-    // If the title begins with a circa prefix like "c." / "ca." and it is
-    // immediately followed by a digit, treat that as part of the date prefix,
-    // not as a standalone "sentence".
-    // Example: "c. 1000 BC— Iron Age starts." should not truncate to "c.".
-    const circaPrefix = s.match(/^\s*(c\.|ca\.|circa)\s*(?=\d)/i);
-    const scanFrom = circaPrefix ? circaPrefix[0].length : 0;
-
+    // Remove date prefixes like "687 BC—", "c. 1000 BC—", "1500-1600—"
+    // Pattern matches: optional circa, year/range, optional BC/AD/BCE/CE, optional separator
+    s = s.replace(/^(c\.|ca\.|circa)?\s*\d+(\s*-\s*\d+)?(\s*(BC|AD|BCE|CE))?\s*[—–-]\s*/i, '');
+    
     // Find the first real sentence terminator, ignoring '.' inside parentheses.
     // This handles common Wikipedia patterns like "(no. 4)".
-    const rest = s.slice(scanFrom);
     let depth = 0;
-    for (let i = 0; i < rest.length; i++) {
-        const ch = rest[i];
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
         if (ch === '(') depth++;
         else if (ch === ')' && depth > 0) depth--;
 
         if (depth > 0) continue;
 
         if (ch === '.' || ch === '!' || ch === '?' || ch === '…') {
-            const next = rest[i + 1];
+            const next = s[i + 1];
             if (next === undefined || /\s/.test(next)) {
-                return (s.slice(0, scanFrom) + rest.slice(0, i + 1)).trim();
+                s = s.slice(0, i + 1).trim();
+                break;
             }
         }
+    }
+
+    // Limit to 30 characters with ellipsis
+    if (s.length > 30) {
+        return s.slice(0, 29) + '…';
     }
 
     return s;
@@ -175,12 +177,15 @@ async function loadEvents(category = null) {
         // Render timeline to set up scales/axes with FULL time range
         renderTimelineWithFullRange(stats);
         
+        console.log('[loadEvents] Timeline initialized, clearing markers and preparing viewport load');
+        
         // Clear all markers immediately and switch to viewport mode
         svg.selectAll('.event-group').remove();
         renderedEventIds.clear();
         
-        // Load viewport-based events
+        // Load viewport-based events (give time for scales to be ready)
         setTimeout(() => {
+            console.log('[loadEvents] Starting viewport load');
             loadEventsInViewport(category);
         }, 100);
     } catch (error) {
@@ -191,8 +196,13 @@ async function loadEvents(category = null) {
 
 // Load events for current viewport (weight-based, top X).
 async function loadEventsInViewport(category = null) {
+    console.log('[loadEventsInViewport] Called with category:', category, 'xScale exists:', !!xScale);
+    
     try {
-        if (!xScale) return;
+        if (!xScale) {
+            console.warn('[loadEventsInViewport] xScale not initialized yet, aborting');
+            return;
+        }
 
         // Get the current zoomed/panned scale, not the base scale
         const currentScale = currentTransform ? currentTransform.rescaleX(xScale) : xScale;
@@ -216,10 +226,13 @@ async function loadEventsInViewport(category = null) {
         const response = await fetch(url);
         const newEvents = await response.json();
 
-        console.log('[Viewport] Loaded', newEvents.length, 'events');
+        console.log('[Viewport] Loaded', newEvents.length, 'events', newEvents.slice(0, 3));
 
         // Diff and incrementally add/remove markers.
         updateTimelineMarkers(newEvents);
+        
+        // Ensure legend is updated (it's called in updateTimelineMarkers, but make sure)
+        console.log('[Viewport] Timeline markers updated, legend should be rendered');
     } catch (error) {
         console.error('Error loading viewport events:', error);
     }
@@ -246,12 +259,6 @@ function initializeScales() {
     
     xScale.domain([minYear - padding, maxYear + padding]);
     currentViewportDomain = getViewportDomain(xScale);
-
-    // Build stable category lanes
-    const categories = Array.from(
-        new Set(filteredEvents.map(e => e.category || 'Unknown'))
-    ).sort();
-    yScale.domain(categories);
     
     // Update axis
     svg.select('.x-axis')
@@ -268,15 +275,9 @@ function updateTimelineMarkers(newEvents) {
     // Update rendered set
     renderedEventIds = newEventIds;
 
-    // Rebuild category lanes for new dataset
-    const categories = Array.from(
-        new Set(newEvents.map(e => e.category || 'Unknown'))
-    ).sort();
-    yScale.domain(categories);
-
     const renderData = newEvents.filter(e => e.start_year !== null);
 
-    // --- Sublane layout (recompute for new data) ---
+    // --- Global sublane layout (no category segregation) ---
     function toYearNumber(year, isBc) {
         if (year === null || year === undefined) return null;
         return isBc ? -year : year;
@@ -297,41 +298,39 @@ function updateTimelineMarkers(newEvents) {
     }
 
     const sublaneById = new Map();
-    const maxSublanesByCategory = new Map();
+    
+    // Sort all events globally by start time (spans before moments, then by start/end)
+    const intervals = renderData
+        .map(d => ({ d, span: getNumericSpan(d) }))
+        .filter(x => x.span !== null)
+        .sort((a, b) => {
+            const aSpan = hasSpan(a.d) ? 0 : 1;
+            const bSpan = hasSpan(b.d) ? 0 : 1;
+            if (aSpan !== bSpan) return aSpan - bSpan;
+            if (a.span.start !== b.span.start) return a.span.start - b.span.start;
+            return a.span.end - b.span.end;
+        });
 
-    const byCategory = d3.group(renderData, d => d.category || 'Unknown');
-    for (const [cat, items] of byCategory) {
-        const intervals = items
-            .map(d => ({ d, span: getNumericSpan(d) }))
-            .filter(x => x.span !== null)
-            .sort((a, b) => {
-                const aSpan = hasSpan(a.d) ? 0 : 1;
-                const bSpan = hasSpan(b.d) ? 0 : 1;
-                if (aSpan !== bSpan) return aSpan - bSpan;
-                if (a.span.start !== b.span.start) return a.span.start - b.span.start;
-                return a.span.end - b.span.end;
-            });
-
-        const laneEnds = [];
-        for (const { d, span } of intervals) {
-            let placed = false;
-            for (let i = 0; i < laneEnds.length; i++) {
-                if (span.start > laneEnds[i]) {
-                    sublaneById.set(d.id, i);
-                    laneEnds[i] = span.end;
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed) {
-                const i = laneEnds.length;
+    // Pack all events into lanes globally (no category boundaries)
+    const laneEnds = [];
+    for (const { d, span } of intervals) {
+        let placed = false;
+        for (let i = 0; i < laneEnds.length; i++) {
+            if (span.start > laneEnds[i]) {
                 sublaneById.set(d.id, i);
-                laneEnds.push(span.end);
+                laneEnds[i] = span.end;
+                placed = true;
+                break;
             }
         }
-
-        maxSublanesByCategory.set(cat, laneEnds.length || 1);
+        if (!placed) {
+            const i = laneEnds.length;
+            sublaneById.set(d.id, i);
+            laneEnds.push(span.end);
+        }
     }
+
+    const totalLanes = laneEnds.length || 1;
 
     // D3 data join
     const eventGroups = svg.selectAll('.event-group')
@@ -382,13 +381,42 @@ function updateTimelineMarkers(newEvents) {
         .style('fill', 'transparent')
         .style('pointer-events', 'all')
         .on('click', (event, d) => showEventDetails(d))
-        .on('mouseenter', function () {
+        .on('mouseenter', function (event, d) {
             const g = d3.select(this.parentNode);
             g.classed('is-hover', true);
+            
+            // Dim all other event labels by setting inline opacity
+            svg.selectAll('.event-group').each(function(eventData) {
+                const group = d3.select(this);
+                if (eventData.id !== d.id) {
+                    group.select('.event-label').style('opacity', 0.1);
+                }
+            });
+            
+            // Make this event's label fully opaque
+            const textElement = g.select('.event-label');
+            textElement.style('opacity', 1);
+            
+            // Replace text with full untruncated title
+            textElement.attr('data-original-text', textElement.text());
+            textElement.text(d.title);
         })
-        .on('mouseleave', function () {
+        .on('mouseleave', function (event, d) {
             const g = d3.select(this.parentNode);
             g.classed('is-hover', false);
+            
+            // Restore original opacity for all labels
+            const labelOp = getLabelOpacityForZoom(currentTransform.k);
+            svg.selectAll('.event-group .event-label')
+                .style('opacity', labelOp);
+            
+            // Restore truncated text
+            const textElement = g.select('.event-label');
+            const originalText = textElement.attr('data-original-text');
+            if (originalText) {
+                textElement.text(originalText);
+                textElement.attr('data-original-text', null);
+            }
         });
 
     // Tooltip
@@ -420,22 +448,19 @@ function updateTimelineMarkers(newEvents) {
     }
 
     function getYForEvent(d) {
-        const lane = d.category || 'Unknown';
-        const bandTop = yScale(lane) ?? 0;
-        const bandH = yScale.bandwidth();
-
-        const sublaneCount = maxSublanesByCategory.get(lane) || 1;
+        const container = document.getElementById('timeline-container');
+        const height = container.clientHeight;
+        const availableHeight = height - margin.top - margin.bottom;
+        
         const sublaneIdx = sublaneById.get(d.id) || 0;
-
-        const innerPad = Math.min(8, bandH * 0.15);
-        const usableH = Math.max(8, bandH - innerPad * 2);
-
-        const maxVisible = 6;
-        const visibleCount = Math.min(maxVisible, sublaneCount);
-        const clampedIdx = Math.min(sublaneIdx, visibleCount - 1);
-
-        const step = usableH / visibleCount;
-        return bandTop + innerPad + step * (clampedIdx + 0.5);
+        
+        // Limit visible lanes to prevent overcrowding
+        const maxVisibleLanes = Math.min(20, totalLanes);
+        const clampedIdx = Math.min(sublaneIdx, maxVisibleLanes - 1);
+        
+        // Distribute events across available vertical space
+        const laneHeight = availableHeight / maxVisibleLanes;
+        return margin.top + (clampedIdx + 0.5) * laneHeight;
     }
 
     function applyPositions(scale) {
@@ -461,13 +486,22 @@ function updateTimelineMarkers(newEvents) {
                 const x0 = getStartX(d, scale);
                 const x1 = getEndX(d, scale);
                 if (x0 === null || x1 === null) return 0;
-                return Math.min(x0, x1);  // Use the leftmost position
+                const minWidth = 12; // Minimum width to match circle size
+                const actualWidth = Math.abs(x1 - x0);
+                const effectiveWidth = Math.max(minWidth, actualWidth);
+                const leftmost = Math.min(x0, x1);
+                // Center the bar if we're using minimum width
+                if (actualWidth < minWidth) {
+                    return leftmost - (minWidth - actualWidth) / 2;
+                }
+                return leftmost;
             })
             .attr('width', d => {
                 const x0 = getStartX(d, scale);
                 const x1 = getEndX(d, scale);
                 if (x0 === null || x1 === null) return 0;
-                return Math.abs(x1 - x0);
+                const minWidth = 12; // Minimum width to match circle size
+                return Math.max(minWidth, Math.abs(x1 - x0));
             })
             .attr('fill', d => colorScale(d.category || 'Unknown'));
 
@@ -478,14 +512,24 @@ function updateTimelineMarkers(newEvents) {
                 const sx = getStartX(d, scale);
                 const ex = getEndX(d, scale);
                 if (sx === null || ex === null) return -18;
-                return Math.min(sx, ex) - 8;
+                const minWidth = 12;
+                const actualWidth = Math.abs(ex - sx);
+                const effectiveWidth = Math.max(minWidth, actualWidth);
+                const leftmost = Math.min(sx, ex);
+                // Center the hit area if using minimum width
+                if (actualWidth < minWidth) {
+                    return leftmost - (minWidth - actualWidth) / 2 - 8;
+                }
+                return leftmost - 8;
             })
             .attr('width', d => {
                 if (!hasSpan(d)) return 36;
                 const sx = getStartX(d, scale);
                 const ex = getEndX(d, scale);
                 if (sx === null || ex === null) return 36;
-                return Math.max(36, Math.abs(ex - sx) + 16);
+                const minWidth = 12;
+                const effectiveWidth = Math.max(minWidth, Math.abs(ex - sx));
+                return Math.max(36, effectiveWidth + 16);
             });
 
         // Position labels for spans
@@ -538,7 +582,7 @@ function updateTimelineMarkers(newEvents) {
         getEndX,
         getYForEvent,
         sublaneById,
-        maxSublanesByCategory,
+        totalLanes,
         getViewportDomain,
         getOpacityForEventInViewport,
         getLabelOpacityForZoom
@@ -654,12 +698,6 @@ function renderTimelineWithFullRange(stats) {
     
     xScale.domain([minYear - padding, maxYear + padding]);
     currentViewportDomain = getViewportDomain(xScale);
-
-    // Build category lanes from loaded events
-    const categories = Array.from(
-        new Set(filteredEvents.map(e => e.category || 'Unknown'))
-    ).sort();
-    yScale.domain(categories);
     
     // Update axis
     svg.select('.x-axis')
@@ -751,12 +789,6 @@ function renderTimeline() {
     
     xScale.domain([minYear - padding, maxYear + padding]);
     currentViewportDomain = getViewportDomain(xScale);
-
-    // Build stable category lanes
-    const categories = Array.from(
-        new Set(filteredEvents.map(e => e.category || 'Unknown'))
-    ).sort();
-    yScale.domain(categories);
     
     // Update axis
     svg.select('.x-axis')
@@ -764,7 +796,7 @@ function renderTimeline() {
     
     const renderData = filteredEvents.filter(e => e.start_year !== null);
 
-    // --- Sublane layout (avoid overlapping spans within a category) ---
+    // --- Global sublane layout (no category segregation) ---
     function toYearNumber(year, isBc) {
         if (year === null || year === undefined) return null;
         return isBc ? -year : year;
@@ -786,46 +818,40 @@ function renderTimeline() {
         };
     }
 
-    // Assign a stable sublane index per category based on interval overlap.
-    // Greedy: sort by start, place into the first lane whose lastEnd < start.
     const sublaneById = new Map();
-    const maxSublanesByCategory = new Map();
+    
+    // Sort all events globally by start time (spans before moments, then by start/end)
+    const intervals = renderData
+        .map(d => ({ d, span: getNumericSpan(d) }))
+        .filter(x => x.span !== null)
+        .sort((a, b) => {
+            const aSpan = hasSpan(a.d) ? 0 : 1;
+            const bSpan = hasSpan(b.d) ? 0 : 1;
+            if (aSpan !== bSpan) return aSpan - bSpan;
+            if (a.span.start !== b.span.start) return a.span.start - b.span.start;
+            return a.span.end - b.span.end;
+        });
 
-    const byCategory = d3.group(renderData, d => d.category || 'Unknown');
-    for (const [cat, items] of byCategory) {
-        const intervals = items
-            .map(d => ({ d, span: getNumericSpan(d) }))
-            .filter(x => x.span !== null)
-            .sort((a, b) => {
-                // Place spanning events first for better packing.
-                const aSpan = hasSpan(a.d) ? 0 : 1;
-                const bSpan = hasSpan(b.d) ? 0 : 1;
-                if (aSpan !== bSpan) return aSpan - bSpan;
-                if (a.span.start !== b.span.start) return a.span.start - b.span.start;
-                return a.span.end - b.span.end;
-            });
-
-        const laneEnds = [];
-        for (const { d, span } of intervals) {
-            let placed = false;
-            for (let i = 0; i < laneEnds.length; i++) {
-                // If this interval starts after the previous one ends, it can share lane.
-                if (span.start > laneEnds[i]) {
-                    sublaneById.set(d.id, i);
-                    laneEnds[i] = span.end;
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed) {
-                const i = laneEnds.length;
+    // Pack all events into lanes globally (no category boundaries)
+    const laneEnds = [];
+    for (const { d, span } of intervals) {
+        let placed = false;
+        for (let i = 0; i < laneEnds.length; i++) {
+            if (span.start > laneEnds[i]) {
                 sublaneById.set(d.id, i);
-                laneEnds.push(span.end);
+                laneEnds[i] = span.end;
+                placed = true;
+                break;
             }
         }
-
-        maxSublanesByCategory.set(cat, laneEnds.length || 1);
+        if (!placed) {
+            const i = laneEnds.length;
+            sublaneById.set(d.id, i);
+            laneEnds.push(span.end);
+        }
     }
+
+    const totalLanes = laneEnds.length || 1;
 
     // Bind data to a group so hover effects don't move the actual hit target
     const eventGroups = svg.selectAll('.event-group')
@@ -872,13 +898,42 @@ function renderTimeline() {
         .style('fill', 'transparent')
         .style('pointer-events', 'all')
         .on('click', (event, d) => showEventDetails(d))
-        .on('mouseenter', function () {
+        .on('mouseenter', function (event, d) {
             const g = d3.select(this.parentNode);
             g.classed('is-hover', true);
+            
+            // Dim all other event labels by setting inline opacity
+            svg.selectAll('.event-group').each(function(eventData) {
+                const group = d3.select(this);
+                if (eventData.id !== d.id) {
+                    group.select('.event-label').style('opacity', 0.1);
+                }
+            });
+            
+            // Make this event's label fully opaque
+            const textElement = g.select('.event-label');
+            textElement.style('opacity', 1);
+            
+            // Replace text with full untruncated title
+            textElement.attr('data-original-text', textElement.text());
+            textElement.text(d.title);
         })
-        .on('mouseleave', function () {
+        .on('mouseleave', function (event, d) {
             const g = d3.select(this.parentNode);
             g.classed('is-hover', false);
+            
+            // Restore original opacity for all labels
+            const labelOp = getLabelOpacityForZoom(currentTransform.k);
+            svg.selectAll('.event-group .event-label')
+                .style('opacity', labelOp);
+            
+            // Restore truncated text
+            const textElement = g.select('.event-label');
+            const originalText = textElement.attr('data-original-text');
+            if (originalText) {
+                textElement.text(originalText);
+                textElement.attr('data-original-text', null);
+            }
         });
 
     // Tooltip
@@ -907,24 +962,19 @@ function renderTimeline() {
     }
 
     function getYForEvent(d) {
-        const lane = d.category || 'Unknown';
-        const bandTop = yScale(lane) ?? 0;
-        const bandH = yScale.bandwidth();
-
-        const sublaneCount = maxSublanesByCategory.get(lane) || 1;
+        const container = document.getElementById('timeline-container');
+        const height = container.clientHeight;
+        const availableHeight = height - margin.top - margin.bottom;
+        
         const sublaneIdx = sublaneById.get(d.id) || 0;
-
-        // Keep a small vertical padding inside the band.
-        const innerPad = Math.min(8, bandH * 0.15);
-        const usableH = Math.max(8, bandH - innerPad * 2);
-
-        // We cap the number of visible sublanes to avoid extreme compression in dense categories.
-        const maxVisible = 6;
-        const visibleCount = Math.min(maxVisible, sublaneCount);
-        const clampedIdx = Math.min(sublaneIdx, visibleCount - 1);
-
-        const step = usableH / visibleCount;
-        return bandTop + innerPad + step * (clampedIdx + 0.5);
+        
+        // Limit visible lanes to prevent overcrowding
+        const maxVisibleLanes = Math.min(20, totalLanes);
+        const clampedIdx = Math.min(sublaneIdx, maxVisibleLanes - 1);
+        
+        // Distribute events across available vertical space
+        const laneHeight = availableHeight / maxVisibleLanes;
+        return margin.top + (clampedIdx + 0.5) * laneHeight;
     }
 
     function applyPositions(scale) {
@@ -1016,32 +1066,37 @@ function renderTimeline() {
 }
 
 function renderLegend() {
-    // Prefer categories from the dropdown (already has counts), fall back to the event data.
     const legendEl = document.getElementById('timeline-legend');
-    if (!legendEl) return;
-
-    const select = document.getElementById('category-select');
-    let items = [];
-
-    if (select) {
-        items = Array.from(select.options)
-            .map(o => o.value)
-            .filter(v => v);
+    if (!legendEl) {
+        console.warn('[renderLegend] Legend element not found');
+        return;
     }
+
+    console.log('[renderLegend] filteredEvents.length:', filteredEvents.length);
+
+    // Get categories from currently rendered events (viewport-based)
+    const categoryCounts = new Map();
+    for (const e of filteredEvents) {
+        const cat = e.category || 'Unknown';
+        categoryCounts.set(cat, (categoryCounts.get(cat) || 0) + 1);
+    }
+
+    console.log('[renderLegend] Category counts:', Object.fromEntries(categoryCounts));
+    console.log('[renderLegend] Total unique categories:', categoryCounts.size);
+
+    // Sort by count (descending) and take top 12
+    const items = Array.from(categoryCounts.entries())
+        .sort((a, b) => b[1] - a[1])  // Sort by count descending
+        .slice(0, 12)
+        .map(([cat, count]) => cat);  // Extract just the category names
+
+    console.log('[renderLegend] Top 12 categories:', items);
 
     if (items.length === 0) {
-        const seen = new Set();
-        for (const e of filteredEvents) {
-            const cat = e.category || 'Unknown';
-            if (!seen.has(cat)) {
-                seen.add(cat);
-                items.push(cat);
-            }
-        }
+        console.warn('[renderLegend] No categories to display');
+        legendEl.innerHTML = '<div class="legend-empty">No events in view</div>';
+        return;
     }
-
-    // Keep legend tidy
-    items = items.sort().slice(0, 12);
 
     // Simple, DOM-based legend rendering (kept out of the zoomable SVG).
     const shapeKeyHtml = `
@@ -1123,7 +1178,6 @@ function zoomed(event) {
     // Recompute sublane assignment on zoom to keep it stable with the current filtered set.
     const data = groups.data();
     const sublaneById = new Map();
-    const byCategory = d3.group(data, d => d.category || 'Unknown');
 
     function getNumericSpan(d) {
         const s = toYearNumber(d.start_year, d.is_bc_start);
@@ -1132,57 +1186,53 @@ function zoomed(event) {
         return { start: Math.min(s, e), end: Math.max(s, e) };
     }
 
-    const maxSublanesByCategory = new Map();
-    for (const [cat, items] of byCategory) {
-        const intervals = items
-            .map(d => ({ d, span: getNumericSpan(d) }))
-            .filter(x => x.span !== null)
-            .sort((a, b) => {
-                const aSpan = hasSpan(a.d) ? 0 : 1;
-                const bSpan = hasSpan(b.d) ? 0 : 1;
-                if (aSpan !== bSpan) return aSpan - bSpan;
-                if (a.span.start !== b.span.start) return a.span.start - b.span.start;
-                return a.span.end - b.span.end;
-            });
+    // Sort all events globally by start time
+    const intervals = data
+        .map(d => ({ d, span: getNumericSpan(d) }))
+        .filter(x => x.span !== null)
+        .sort((a, b) => {
+            const aSpan = hasSpan(a.d) ? 0 : 1;
+            const bSpan = hasSpan(b.d) ? 0 : 1;
+            if (aSpan !== bSpan) return aSpan - bSpan;
+            if (a.span.start !== b.span.start) return a.span.start - b.span.start;
+            return a.span.end - b.span.end;
+        });
 
-        const laneEnds = [];
-        for (const { d, span } of intervals) {
-            let placed = false;
-            for (let i = 0; i < laneEnds.length; i++) {
-                if (span.start > laneEnds[i]) {
-                    sublaneById.set(d.id, i);
-                    laneEnds[i] = span.end;
-                    placed = true;
-                    break;
-                }
-            }
-            if (!placed) {
-                const i = laneEnds.length;
+    // Pack all events into lanes globally
+    const laneEnds = [];
+    for (const { d, span } of intervals) {
+        let placed = false;
+        for (let i = 0; i < laneEnds.length; i++) {
+            if (span.start > laneEnds[i]) {
                 sublaneById.set(d.id, i);
-                laneEnds.push(span.end);
+                laneEnds[i] = span.end;
+                placed = true;
+                break;
             }
         }
-
-        maxSublanesByCategory.set(cat, laneEnds.length || 1);
+        if (!placed) {
+            const i = laneEnds.length;
+            sublaneById.set(d.id, i);
+            laneEnds.push(span.end);
+        }
     }
 
+    const totalLanes = laneEnds.length || 1;
+
     function getYForEvent(d) {
-        const lane = d.category || 'Unknown';
-        const bandTop = yScale(lane) ?? 0;
-        const bandH = yScale.bandwidth();
-
-        const sublaneCount = maxSublanesByCategory.get(lane) || 1;
+        const container = document.getElementById('timeline-container');
+        const height = container.clientHeight;
+        const availableHeight = height - margin.top - margin.bottom;
+        
         const sublaneIdx = sublaneById.get(d.id) || 0;
-
-        const innerPad = Math.min(8, bandH * 0.15);
-        const usableH = Math.max(8, bandH - innerPad * 2);
-
-        const maxVisible = 6;
-        const visibleCount = Math.min(maxVisible, sublaneCount);
-        const clampedIdx = Math.min(sublaneIdx, visibleCount - 1);
-
-        const step = usableH / visibleCount;
-        return bandTop + innerPad + step * (clampedIdx + 0.5);
+        
+        // Limit visible lanes to prevent overcrowding
+        const maxVisibleLanes = Math.min(20, totalLanes);
+        const clampedIdx = Math.min(sublaneIdx, maxVisibleLanes - 1);
+        
+        // Distribute events across available vertical space
+        const laneHeight = availableHeight / maxVisibleLanes;
+        return margin.top + (clampedIdx + 0.5) * laneHeight;
     }
 
     groups.attr('transform', d => {
@@ -1287,7 +1337,7 @@ function handleCategoryFilter(event) {
 function showEventDetails(event) {
     selectedEvent = event;
     
-    document.getElementById('event-title').textContent = firstSentence(event.title);
+    document.getElementById('event-title').textContent = event.title;
     document.getElementById('event-period').textContent = event.display_year || 'Unknown';
     document.getElementById('event-category').textContent = event.category || 'Uncategorized';
     document.getElementById('event-description').textContent = event.description || 'No description available.';
@@ -1417,6 +1467,31 @@ function showError(message) {
 
 // Handle window resize
 window.addEventListener('resize', () => {
+    console.log('[resize] Window resized, reinitializing timeline');
+    
+    // Save the current domain before reinitializing
+    const currentDomain = xScale ? xScale.domain() : null;
+    const currentTransformState = currentTransform;
+    
     initializeTimeline();
-    renderTimeline();
+    
+    // Restore the domain if we had one
+    if (currentDomain) {
+        xScale.domain(currentDomain);
+        svg.select('.x-axis').call(xAxis);
+    }
+    
+    // Restore the transform state
+    if (currentTransformState) {
+        currentTransform = currentTransformState;
+    }
+    
+    // Reload viewport with current state
+    if (renderedEventIds.size > 0) {
+        // We're in viewport mode, reload the viewport
+        loadEventsInViewport();
+    } else {
+        // Fallback to full render if viewport mode isn't active yet
+        renderTimeline();
+    }
 });

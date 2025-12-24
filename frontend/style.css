@@ -228,6 +228,12 @@ header h1 {
     paint-order: stroke;
     stroke: rgba(255, 255, 255, 0.85);
     stroke-width: 3px;
+    transition: opacity 0.2s ease;
+}
+
+/* Dim text on other events when one is hovered */
+.event-group.is-dimmed .event-label {
+    opacity: 0.1;
 }
 
 .event-group.is-hover .event-label {

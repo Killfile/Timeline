@@ -14,8 +14,10 @@ import json
 import os
 import re
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -66,6 +68,180 @@ _MONTHS = (
 )
 
 
+# ===== Data Classes =====
+# Structured types replacing dict returns for better type safety
+
+
+@dataclass
+class PageScope:
+    """Date scope for a year/decade/century page."""
+    precision: str  # "year", "decade", or "century"
+    start_year: int
+    end_year: int
+    is_bc: bool
+
+
+@dataclass
+class BulletSpan:
+    """Parsed date span from event bullet text."""
+    precision: str
+    start_year: int
+    end_year: int
+    is_bc: bool
+
+
+@dataclass
+class EventItem:
+    """Structured event bullet extracted from HTML."""
+    text: str
+    tag: Optional[str] = None
+    month_bucket: Optional[str] = None
+    events_heading: Optional[str] = None
+
+
+@dataclass
+class ExclusionReport:
+    """Report of excluded bullets during extraction."""
+    excluded_counts: dict[str, int] = field(default_factory=dict)
+    excluded_samples: dict[str, list[dict]] = field(default_factory=dict)
+
+
+@dataclass
+class PageDiscovery:
+    """Discovered year/decade page metadata."""
+    title: str
+    url: str
+    scope: dict  # Will be PageScope once dict consumers are updated
+
+
+# ===== Pure Parsing Functions =====
+# Functions that don't perform IO and can be tested independently
+
+
+def _bump_excluded(
+    excluded_counts: dict[str, int],
+    excluded_samples: dict[str, list[dict]],
+    reason: str,
+    *,
+    text: Optional[str] = None,
+    events_heading: Optional[str] = None,
+    h3: Optional[str] = None,
+) -> None:
+    """Add an exclusion reason to the tracking dictionaries.
+    
+    Args:
+        excluded_counts: Count dictionary to update
+        excluded_samples: Sample dictionary to update
+        reason: Exclusion reason key
+        text: Optional bullet text
+        events_heading: Optional heading text
+        h3: Optional h3 context
+    """
+    excluded_counts[reason] = excluded_counts.get(reason, 0) + 1
+    if text:
+        bucket = excluded_samples.setdefault(reason, [])
+        if len(bucket) < 8:
+            bucket.append({
+                "text": text[:200],
+                "events_heading": events_heading,
+                "h3": h3
+            })
+
+
+def _element_should_be_excluded(el, content_root) -> bool:
+    """Check if element is in excluded navigation/metadata sections.
+    
+    Args:
+        el: BeautifulSoup element
+        content_root: The main content container element
+        
+    Returns:
+        True if element should be excluded from extraction
+    """
+    if el is None:
+        return True
+    if content_root is not None and not (el is content_root or content_root in el.parents):
+        return True
+
+    for anc in el.parents:
+        if not hasattr(anc, "name"):
+            continue
+        anc_id = (anc.get("id") or "").strip()
+        if anc_id in {"mw-normal-catlinks", "mw-hidden-catlinks", "catlinks", "footer"}:
+            return True
+
+        classes = set((anc.get("class") or []))
+        if classes.intersection(
+            {
+                "navbox",
+                "navbox-inner",
+                "vertical-navbox",
+                "metadata",
+                "mbox-small",
+                "ambox",
+                "hatnote",
+                "mw-footer",
+                "mw-portlet",
+            }
+        ):
+            return True
+
+    return False
+
+
+def _merge_exclusions(
+    exclusions_agg_counts: dict[str, int],
+    exclusions_agg_samples: dict[str, list[dict]],
+    report: Optional[dict],
+) -> None:
+    """Merge extraction report exclusions into aggregate dictionaries.
+    
+    Args:
+        exclusions_agg_counts: Aggregate counts to update
+        exclusions_agg_samples: Aggregate samples to update
+        report: Extraction report dict with excluded_counts and excluded_samples
+    """
+    if not report:
+        return
+    counts = report.get("excluded_counts") or {}
+    samples = report.get("excluded_samples") or {}
+    for k, v in counts.items():
+        exclusions_agg_counts[k] = exclusions_agg_counts.get(k, 0) + int(v)
+    for reason, slist in (samples or {}).items():
+        bucket = exclusions_agg_samples.setdefault(reason, [])
+        for s in slist:
+            if len(bucket) >= 25:
+                break
+            bucket.append(s)
+
+
+def _write_exclusions_report(
+    exclusions_agg_counts: dict[str, int],
+    exclusions_agg_samples: dict[str, list[dict]],
+) -> None:
+    """Write exclusions report to JSON file.
+    
+    Args:
+        exclusions_agg_counts: Aggregate exclusion counts
+        exclusions_agg_samples: Aggregate exclusion samples
+    """
+    try:
+        out_path = Path(LOGS_DIR) / f"exclusions_{RUN_ID}.json"
+        payload = {
+            "run_id": RUN_ID,
+            "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+            "excluded_counts": exclusions_agg_counts,
+            "excluded_samples": exclusions_agg_samples,
+        }
+        out_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8"
+        )
+        log_info(f"Wrote exclusions report: {out_path}")
+    except Exception as e:
+        log_info(f"Failed to write exclusions report: {e}")
+
+
 def _parse_scope_from_title(title: str) -> dict | None:
     """Infer the date scope from a year/decade/century page title."""
     t = (title or "").strip()
@@ -113,7 +289,16 @@ def _extract_events_and_trends_bullets(html: str) -> list[str]:
     return [i["text"] for i in _extract_events_section_items(html)]
 
 
-def _classify_events_h3_context(h3_text: str | None) -> tuple[str | None, str | None]:
+def _get_tag_and_month_from_h3_context(h3_text: str | None) -> tuple[str | None, str | None]:
+    """Classify h3 heading as a tag or month bucket.
+    
+    Args:
+        h3_text: The h3 heading text
+        
+    Returns:
+        Tuple of (tag, month_bucket). Tag is the category label, month_bucket
+        is the month name if this is a month heading.
+    """
     if not h3_text:
         return None, None
 
@@ -142,7 +327,14 @@ def _classify_events_h3_context(h3_text: str | None) -> tuple[str | None, str | 
 
 
 def _is_grouping_category_heading(h3_text: str | None) -> bool:
-    """Return True for generic group headings that should not be treated as tags."""
+    """Return True for generic group headings that should not be treated as tags.
+    
+    Args:
+        h3_text: The h3 heading text
+        
+    Returns:
+        True if this is a generic grouping header like "By place/topic"
+    """
 
     if not h3_text:
         return False
@@ -157,6 +349,14 @@ def _is_grouping_category_heading(h3_text: str | None) -> bool:
 
 
 def _find_events_h2_heading(soup: BeautifulSoup):
+    """Find the Events or Events and trends h2 heading.
+    
+    Args:
+        soup: BeautifulSoup parsed HTML
+        
+    Returns:
+        The h2 element or None if not found
+    """
     for h in soup.find_all(["h2"]):
         txt = h.get_text(" ", strip=True)
         if not txt:
@@ -168,7 +368,14 @@ def _find_events_h2_heading(soup: BeautifulSoup):
 
 
 def _extract_events_section_items_with_report(html: str) -> tuple[list[dict], dict]:
-    """Extract structured items from the year page Events section."""
+    """Extract structured items from the year page Events section.
+    
+    Args:
+        html: Raw HTML content from Wikipedia page
+        
+    Returns:
+        Tuple of (event items list, exclusion report dict)
+    """
     soup = BeautifulSoup(html, "lxml")
     content_root = soup.select_one("#mw-content-text") or soup
     events_h2 = _find_events_h2_heading(soup)
@@ -182,44 +389,6 @@ def _extract_events_section_items_with_report(html: str) -> tuple[list[dict], di
 
     excluded_counts: dict[str, int] = {}
     excluded_samples: dict[str, list[dict]] = {}
-
-    def _bump_excluded(reason: str, *, text: str | None = None, events_heading: str | None = None, h3: str | None = None):
-        excluded_counts[reason] = excluded_counts.get(reason, 0) + 1
-        if text:
-            bucket = excluded_samples.setdefault(reason, [])
-            if len(bucket) < 8:
-                bucket.append({"text": text[:200], "events_heading": events_heading, "h3": h3})
-
-    def _is_in_excluded_chrome(el) -> bool:
-        if el is None:
-            return True
-        if content_root is not None and not (el is content_root or content_root in el.parents):
-            return True
-
-        for anc in el.parents:
-            if not hasattr(anc, "name"):
-                continue
-            anc_id = (anc.get("id") or "").strip()
-            if anc_id in {"mw-normal-catlinks", "mw-hidden-catlinks", "catlinks", "footer"}:
-                return True
-
-            classes = set((anc.get("class") or []))
-            if classes.intersection(
-                {
-                    "navbox",
-                    "navbox-inner",
-                    "vertical-navbox",
-                    "metadata",
-                    "mbox-small",
-                    "ambox",
-                    "hatnote",
-                    "mw-footer",
-                    "mw-portlet",
-                }
-            ):
-                return True
-
-        return False
 
     for node in events_h2.find_all_next():
         if node == events_h2:
@@ -240,30 +409,30 @@ def _extract_events_section_items_with_report(html: str) -> tuple[list[dict], di
         if node.name != "ul":
             continue
 
-        if _is_in_excluded_chrome(node):
-            _bump_excluded("chrome_ul", events_heading=events_heading, h3=current_h3)
+        if _element_should_be_excluded(node, content_root):
+            _bump_excluded(excluded_counts, excluded_samples, "chrome_ul", events_heading=events_heading, h3=current_h3)
             continue
 
-        tag, month_bucket = _classify_events_h3_context(current_h3)
+        tag, month_bucket = _get_tag_and_month_from_h3_context(current_h3)
         if current_h4:
             tag = current_h4
 
         for li in node.find_all("li", recursive=False):
-            if _is_in_excluded_chrome(li):
-                _bump_excluded("chrome_li", events_heading=events_heading, h3=current_h3)
+            if _element_should_be_excluded(li, content_root):
+                _bump_excluded(excluded_counts, excluded_samples, "chrome_li", events_heading=events_heading, h3=current_h3)
                 continue
             text = li.get_text(" ", strip=True)
             if not text:
-                _bump_excluded("empty_li", events_heading=events_heading, h3=current_h3)
+                _bump_excluded(excluded_counts, excluded_samples, "empty_li", events_heading=events_heading, h3=current_h3)
                 continue
             if text.startswith("Category:"):
-                _bump_excluded("category_prefix", text=text, events_heading=events_heading, h3=current_h3)
+                _bump_excluded(excluded_counts, excluded_samples, "category_prefix", text=text, events_heading=events_heading, h3=current_h3)
                 continue
             if len(text) < 3:
-                _bump_excluded("too_short", text=text, events_heading=events_heading, h3=current_h3)
+                _bump_excluded(excluded_counts, excluded_samples, "too_short", text=text, events_heading=events_heading, h3=current_h3)
                 continue
             if text in {"v", "t", "e"}:
-                _bump_excluded("vtelinks", text=text, events_heading=events_heading, h3=current_h3)
+                _bump_excluded(excluded_counts, excluded_samples, "vtelinks", text=text, events_heading=events_heading, h3=current_h3)
                 continue
 
             log_info(f"Found event bullet: {text[:100]!r} (tag={tag!r}, month_bucket={month_bucket!r})")
@@ -396,44 +565,21 @@ def _parse_span_from_bullet(text: str, *, assume_is_bc: bool | None = None) -> d
 
 
 def ingest_wikipedia_list_of_years(conn) -> None:
+    """Main entry point for ingesting events from Wikipedia's List of years.
+    
+    Args:
+        conn: Database connection for inserting events
+    """
     log_info("Starting Wikipedia list-of-years ingestion...")
 
     exclusions_agg_counts: dict[str, int] = {}
     exclusions_agg_samples: dict[str, list[dict]] = {}
 
-    def _merge_exclusions(report: dict | None):
-        if not report:
-            return
-        counts = report.get("excluded_counts") or {}
-        samples = report.get("excluded_samples") or {}
-        for k, v in counts.items():
-            exclusions_agg_counts[k] = exclusions_agg_counts.get(k, 0) + int(v)
-        for reason, slist in (samples or {}).items():
-            bucket = exclusions_agg_samples.setdefault(reason, [])
-            for s in slist:
-                if len(bucket) >= 25:
-                    break
-                bucket.append(s)
-
-    def _write_exclusions_report():
-        try:
-            out_path = Path(LOGS_DIR) / f"exclusions_{RUN_ID}.json"
-            payload = {
-                "run_id": RUN_ID,
-                "generated_at_utc": datetime.utcnow().isoformat() + "Z",
-                "excluded_counts": exclusions_agg_counts,
-                "excluded_samples": exclusions_agg_samples,
-            }
-            out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            log_info(f"Wrote exclusions report: {out_path}")
-        except Exception as e:
-            log_info(f"Failed to write exclusions report: {e}")
-
     (index_pair, index_err) = _get_html(LIST_OF_YEARS_URL, context="list_of_years")
     index_html, _index_url = index_pair
     if index_err or not index_html.strip():
         log_error(f"Failed to load List_of_years page: {index_err}")
-        _write_exclusions_report()
+        _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)
         return
 
     raw_limit = os.getenv("WIKI_LIST_OF_YEARS_PAGE_LIMIT")
@@ -448,6 +594,7 @@ def ingest_wikipedia_list_of_years(conn) -> None:
         pages = [p for p in pages if bool(p.get("scope", {}).get("is_bc", False))]
 
     log_info(f"Discovered {len(pages)} year/decade pages (limit={page_limit}, env={raw_limit!r}, bc_only={bc_only})")
+    log_info(f"Full pages list: {pages}")
 
     total_inserted = 0
     visited_page_keys: set[tuple] = set()
@@ -511,7 +658,7 @@ def ingest_wikipedia_list_of_years(conn) -> None:
             log_info("No Events bullets found (skipping)")
             continue
 
-        _merge_exclusions(extraction_report)
+        _merge_exclusions(exclusions_agg_counts, exclusions_agg_samples, extraction_report)
 
         try:
             excluded_counts = (extraction_report or {}).get("excluded_counts") or {}
@@ -613,4 +760,4 @@ def ingest_wikipedia_list_of_years(conn) -> None:
                 total_inserted += 1
 
     log_info(f"Inserted {total_inserted} events from list-of-years")
-    _write_exclusions_report()
+    _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)

@@ -45,6 +45,18 @@ These instructions apply to all Copilot-generated code and edits in this repo.
   - happy path
   - at least 1–2 edge cases
   - at least 1 failure mode (exception/invalid input)
+- Prefer fast, isolated unit tests over integration tests where possible.
+- Mock external dependencies (HTTP, DB) in unit tests; no exceptions.
+    - Use clean, readable, scoped mocks (e.g., `unittest.mock` in Python, `jest.mock` in JS).
+- Tests should be isolated from each other both logically and architecturally. 
+    - Avoid DRYing up tests; duplication in tests is often acceptable for clarity.
+    - Avoid shared fixtures that create hidden dependencies between tests.
+- Tests MUST be highly readable and maintainable:
+  - Clear naming
+  - Simple setup/teardown
+  - Well-structured assertions
+  - Avoid complex logic in tests
+- Target 80%+ code coverage for any new/changed logic.
 
 ### Python
 
@@ -53,6 +65,11 @@ These instructions apply to all Copilot-generated code and edits in this repo.
   - avoid global state where possible
   - parameterize external dependencies (HTTP sessions, DB connections)
   - keep pure logic in functions that don’t require Docker to test
+- Avoid long functions and classes; break into smaller, testable units.
+- Avoid defining functions within other functions or methods.
+- Pass variables explicitly rather than relying on closures or outer scope.
+- Use type hints for function parameters and return values.
+- Prefer using dictionaries or data classes for structured data rather than tuples or lists.
 
 ### Frontend (JS)
 
