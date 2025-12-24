@@ -172,30 +172,55 @@ def get_events(
             padded_min = vmin - padding
             padded_max = vmax + padding
 
-            # Filter events that overlap [padded_min, padded_max].
-            # Event overlaps if: (event_start <= padded_max) AND (event_end >= padded_min)
-            query = """
+            # Strategy: Spatially-balanced binned selection
+            # Divide viewport into bins, get top events from each bin by weight,
+            # then round-robin select from bins to ensure spatial distribution.
+            # This works even when all events have the same weight.
+            
+            num_bins = 10
+            events_per_bin = max(10, limit // num_bins + 20)  # Get extra per bin to fill gaps
+            padded_span = padded_max - padded_min
+            
+            query_parts = []
+            params = []
+            
+            for i in range(num_bins):
+                bin_start = padded_min + padded_span * i / num_bins
+                bin_end = padded_min + padded_span * (i + 1) / num_bins
+                
+                subquery = """
+                    (SELECT id, title, description, start_year, end_year,
+                            is_bc_start, is_bc_end, weight, category, wikipedia_url,
+                            %s as bin_num,
+                            ROW_NUMBER() OVER (ORDER BY weight DESC, id) as rank_in_bin
+                     FROM historical_events
+                     WHERE weight IS NOT NULL
+                       AND start_year IS NOT NULL
+                       AND end_year IS NOT NULL
+                       AND (CASE WHEN is_bc_start THEN -start_year ELSE start_year END) >= %s
+                       AND (CASE WHEN is_bc_start THEN -start_year ELSE start_year END) < %s
+                """
+                params.extend([i, bin_start, bin_end])
+                
+                if category:
+                    subquery += " AND category = %s"
+                    params.append(category)
+                
+                subquery += " ORDER BY weight DESC, id LIMIT %s)"
+                params.append(events_per_bin)
+                
+                query_parts.append(subquery)
+            
+            # Union all bins, then use ROW_NUMBER to interleave events from different bins
+            # This ensures we get a balanced sample across the timeline
+            query = " UNION ALL ".join(query_parts)
+            query = f"""
                 SELECT id, title, description, start_year, end_year,
                        is_bc_start, is_bc_end, weight, category, wikipedia_url
-                FROM historical_events
-                WHERE weight IS NOT NULL
-                  AND start_year IS NOT NULL
-                  AND end_year IS NOT NULL
-                  AND (
-                      CASE WHEN is_bc_start THEN -start_year ELSE start_year END <= %s
-                  )
-                  AND (
-                      CASE WHEN is_bc_end THEN -end_year ELSE end_year END >= %s
-                  )
+                FROM ({query}) AS all_bins
+                ORDER BY rank_in_bin, bin_num
+                LIMIT %s
             """
-            params = [padded_max, padded_min]
-
-            if category:
-                query += " AND category = %s"
-                params.append(category)
-
-            query += " ORDER BY weight DESC, start_year ASC"
-            query += " LIMIT %s"
             params.append(limit)
 
         else:
