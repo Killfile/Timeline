@@ -613,12 +613,53 @@ async function updateStats() {
 }
 
 // Format year for display
-function formatYearDisplay(year) {
-    if (year < 0) {
-        return `${Math.abs(year)} BC`;
-    } else {
-        return `${year} AD`;
+// Format year display for axis ticks, adapting to zoom level
+// When zoomed in beyond 1 year, show months and days instead of decimals
+function formatYearDisplay(year, viewportSpan) {
+    const absYear = Math.abs(year);
+    const isBC = year < 0;
+    const suffix = isBC ? ' BC' : ' AD';
+    
+    // If viewport span is undefined, fall back to simple year display
+    if (viewportSpan === undefined || viewportSpan === null) {
+        return Math.round(absYear) + suffix;
     }
+    
+    // For spans > 2 years, just show the year
+    if (viewportSpan > 2) {
+        return Math.round(absYear) + suffix;
+    }
+    
+    // For spans 0.1 to 2 years, show year and month
+    if (viewportSpan > 0.1) {
+        const wholeYear = Math.floor(absYear);
+        const fractionalYear = absYear - wholeYear;
+        const month = Math.floor(fractionalYear * 12) + 1; // 1-12
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${monthNames[month - 1]} ${wholeYear}${suffix}`;
+    }
+    
+    // For spans < 0.1 years (~36 days), show month and day
+    const wholeYear = Math.floor(absYear);
+    const fractionalYear = absYear - wholeYear;
+    const dayOfYear = Math.floor(fractionalYear * 365) + 1; // 1-365
+    
+    // Convert day of year to month and day
+    const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month = 0;
+    let day = dayOfYear;
+    for (let i = 0; i < 12; i++) {
+        if (day <= daysInMonth[i]) {
+            month = i;
+            break;
+        }
+        day -= daysInMonth[i];
+    }
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[month]} ${day}, ${wholeYear}${suffix}`;
 }
 
 // Initialize D3 timeline
@@ -643,7 +684,12 @@ function initializeTimeline() {
     
     // Create axes
     xAxis = d3.axisBottom(xScale)
-        .tickFormat(d => formatYearDisplay(d));
+        .tickFormat(d => {
+            // Calculate viewport span from the current scale
+            const domain = (currentTransform ? currentTransform.rescaleX(xScale) : xScale).domain();
+            const span = Math.abs(domain[1] - domain[0]);
+            return formatYearDisplay(d, span);
+        });
     
     // Add zoom behavior
     zoom = d3.zoom()

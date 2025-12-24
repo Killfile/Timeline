@@ -33,3 +33,4 @@ data/
 # Logs
 *.log
 logs/
+wikipedia-ingestion/REFACTORING_SUMMARY.md

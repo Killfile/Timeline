@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Date Formatting Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .test { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .span { color: blue; font-weight: bold; }
+        .result { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Timeline Date Formatting Test</h1>
+    <p>Testing how dates appear at different zoom levels (viewport spans):</p>
+    
+    <div id="results"></div>
+    
+    <script>
+        // Copy the formatting function
+        function formatYearDisplay(year, viewportSpan) {
+            const absYear = Math.abs(year);
+            const isBC = year < 0;
+            const suffix = isBC ? ' BC' : ' AD';
+            
+            if (viewportSpan === undefined || viewportSpan === null) {
+                return Math.round(absYear) + suffix;
+            }
+            
+            if (viewportSpan > 2) {
+                return Math.round(absYear) + suffix;
+            }
+            
+            if (viewportSpan > 0.1) {
+                const wholeYear = Math.floor(absYear);
+                const fractionalYear = absYear - wholeYear;
+                const month = Math.floor(fractionalYear * 12) + 1;
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return `${monthNames[month - 1]} ${wholeYear}${suffix}`;
+            }
+            
+            const wholeYear = Math.floor(absYear);
+            const fractionalYear = absYear - wholeYear;
+            const dayOfYear = Math.floor(fractionalYear * 365) + 1;
+            
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            let month = 0;
+            let day = dayOfYear;
+            for (let i = 0; i < 12; i++) {
+                if (day <= daysInMonth[i]) {
+                    month = i;
+                    break;
+                }
+                day -= daysInMonth[i];
+            }
+            
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            return `${monthNames[month]} ${day}, ${wholeYear}${suffix}`;
+        }
+        
+        // Test cases
+        const tests = [
+            { year: -500, span: 1000, desc: "Zoomed out (1000 years)" },
+            { year: -500, span: 100, desc: "Medium zoom (100 years)" },
+            { year: -500, span: 10, desc: "Closer zoom (10 years)" },
+            { year: -500.5, span: 2, desc: "Year zoom (2 years)" },
+            { year: -500.25, span: 1, desc: "Sub-year zoom (1 year)" },
+            { year: -500.5, span: 0.5, desc: "Month zoom (6 months)" },
+            { year: -500.083, span: 0.2, desc: "Month zoom (2.4 months)" },
+            { year: -500.123, span: 0.05, desc: "Day zoom (18 days)" },
+            { year: -500.247, span: 0.01, desc: "Day zoom (4 days)" },
+            { year: 100.5, span: 1, desc: "AD Year with months" },
+            { year: 100.75, span: 0.5, desc: "AD Month zoom" },
+            { year: 100.1, span: 0.05, desc: "AD Day zoom" },
+        ];
+        
+        const resultsDiv = document.getElementById('results');
+        tests.forEach(test => {
+            const result = formatYearDisplay(test.year, test.span);
+            resultsDiv.innerHTML += `
+                <div class="test">
+                    <strong>${test.desc}</strong><br>
+                    Year: <span class="span">${test.year}</span>, 
+                    Span: <span class="span">${test.span}</span> years<br>
+                    Result: <span class="result">${result}</span>
+                </div>
+            `;
+        });
+    </script>
+</body>
+</html>
