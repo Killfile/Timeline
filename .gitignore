@@ -1,3 +1,6 @@
+# Local Python virtualenvs
+wikipedia-ingestion/.venv*/
+wikipedia-ingestion/.venv311/
 # Environment variables
 .env
 

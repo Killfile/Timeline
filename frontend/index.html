@@ -51,6 +51,7 @@
 
         <div id="timeline-container">
             <svg id="timeline"></svg>
+            <div id="timeline-legend" class="timeline-legend" aria-label="Timeline key"></div>
         </div>
 
         <div id="event-details" class="event-details hidden">
@@ -62,6 +63,24 @@
                 <p><strong>Time Period:</strong> <span id="event-period"></span></p>
                 <p><strong>Category:</strong> <span id="event-category"></span></p>
                 <p id="event-description"></p>
+
+                <details id="event-debug-details" class="event-debug">
+                    <summary>Debug (date extraction)</summary>
+                    <div class="event-debug-body">
+                        <div id="event-debug-loading" class="event-debug-loading hidden">Loading…</div>
+                        <div id="event-debug-error" class="event-debug-error hidden"></div>
+                        <dl id="event-debug-dl" class="event-debug-dl hidden">
+                            <dt>Strategy</dt>
+                            <dd id="event-debug-strategy">-</dd>
+
+                            <dt>Extracted start</dt>
+                            <dd id="event-debug-start">-</dd>
+
+                            <dt>Extracted end</dt>
+                            <dd id="event-debug-end">-</dd>
+                        </dl>
+                    </div>
+                </details>
                 <a id="event-wikipedia-link" href="#" target="_blank">Read more on Wikipedia →</a>
             </div>
         </div>

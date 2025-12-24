@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Clear the Postgres data volume and rebuild.
+# This is the simplest "nuke and pave" option.
+# If you want to keep the volume and only truncate tables, use ./scripts/reset-db instead.
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+COMPOSE="docker compose"
+if docker-compose version >/dev/null 2>&1; then
+  # Allow older docker-compose too, but prefer docker compose.
+  true
+fi
+
+echo "Stopping stack..."
+$COMPOSE down
+
+echo "Removing volumes (this deletes ALL DB data)..."
+$COMPOSE down -v
+
+echo "Rebuilding and starting stack..."
+$COMPOSE up -d --build
+
+echo "Done. Postgres will re-run init.sql on the fresh volume."

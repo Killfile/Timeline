@@ -6,6 +6,7 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
+from typing import Any, Dict
 
 # Database configuration
 DB_CONFIG = {
@@ -52,6 +53,24 @@ class TimelineStats(BaseModel):
     earliest_year: Optional[int] = None
     latest_year: Optional[int] = None
     categories: List[str] = []
+
+
+class ExtractionDebug(BaseModel):
+    """Observability payload for how an event's date was extracted."""
+
+    historical_event_id: int
+    extraction_method: str
+    extracted_year_matches: Optional[Any] = None
+    chosen_start_year: Optional[int] = None
+    chosen_is_bc_start: bool = False
+    chosen_end_year: Optional[int] = None
+    chosen_is_bc_end: bool = False
+    extract_snippet: Optional[str] = None
+    pageid: Optional[int] = None
+    title: Optional[str] = None
+    category: Optional[str] = None
+    wikipedia_url: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 # Database connection helper
@@ -183,6 +202,44 @@ def get_event(event_id: int):
         
         return event
     
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/events/{event_id}/extraction-debug", response_model=ExtractionDebug)
+def get_event_extraction_debug(event_id: int):
+    """Get the extraction observability record for a given event."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT historical_event_id,
+                   extraction_method,
+                   extracted_year_matches,
+                   chosen_start_year,
+                   chosen_is_bc_start,
+                   chosen_end_year,
+                   chosen_is_bc_end,
+                   extract_snippet,
+                   pageid,
+                   title,
+                   category,
+                   wikipedia_url,
+                   created_at
+            FROM event_date_extraction_debug
+            WHERE historical_event_id = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (event_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="No extraction debug record found for event")
+        return row
     finally:
         cursor.close()
         conn.close()

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Error: docker is not installed or not on PATH." >&2
+  exit 1
+fi
+
+# Prefer Docker Compose v2 (`docker compose`), fall back to v1 (`docker-compose`).
+COMPOSE=(docker compose)
+if ! docker compose version >/dev/null 2>&1; then
+  if command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE=(docker-compose)
+  else
+    echo "Error: Docker Compose not found. Install Docker Desktop (includes compose v2)." >&2
+    exit 1
+  fi
+fi
+
+ENV_FILE="$ROOT_DIR/.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Error: $ENV_FILE not found." >&2
+  echo "Create it from .env.example, e.g.: cp .env.example .env" >&2
+  exit 1
+fi
+
+# Load .env for this script (compose will also read it).
+# shellcheck disable=SC1090
+set -a
+source "$ENV_FILE"
+set +a
+
+# Sanity check required variables used by docker-compose.yml
+missing=()
+for v in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD API_PORT; do
+  if [[ -z "${!v:-}" ]]; then
+    missing+=("$v")
+  fi
+done
+if (( ${#missing[@]} > 0 )); then
+  echo "Error: Missing required env vars in .env: ${missing[*]}" >&2
+  exit 1
+fi
+
+# Bring the stack up
+echo "Starting Timeline stack…"
+"${COMPOSE[@]}" up -d --build
+
+# Quick status summary
+"${COMPOSE[@]}" ps
+
+echo
+echo "Frontend: http://localhost:3000"
+echo "API:      http://localhost:${API_PORT}"
+echo
+echo "To stop:  ${COMPOSE[*]} down"

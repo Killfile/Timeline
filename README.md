@@ -111,6 +111,25 @@ This application consists of four containerized services:
 - Click events for details
 - Responsive design
 
+### pgAdmin (database inspector)
+
+This repo includes a pgAdmin container for inspecting Postgres.
+
+- **URL**: http://localhost:5050 (or whatever `PGADMIN_PORT` is in `.env`)
+- **Login**:
+   - Email: `PGADMIN_DEFAULT_EMAIL` (default `admin@example.com`)
+   - Password: `PGADMIN_DEFAULT_PASSWORD`
+
+The Postgres server runs on the Docker Compose network, so from pgAdmin the host is the Compose service name:
+
+- **Host name/address**: `database`
+- **Port**: `5432`
+- **Maintenance DB**: `POSTGRES_DB` (default `timeline_history`)
+- **Username**: `POSTGRES_USER` (default `timeline_user`)
+- **Password**: `POSTGRES_PASSWORD`
+
+Note: pgAdmin is preconfigured with a server entry named **"Timeline Postgres"** via `pgadmin/servers.json`. If you don't see it, restart the pgAdmin service (`docker compose restart pgadmin`).
+
 ## Development
 
 ### View logs for all services:
