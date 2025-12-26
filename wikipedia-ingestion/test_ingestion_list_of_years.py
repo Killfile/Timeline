@@ -8,7 +8,7 @@ import pytest
 from ingestion_list_of_years import (
     _parse_scope_from_title,
     _get_tag_and_month_from_h3_context,
-    _is_grouping_category_heading,
+    _is_heading_generic,
     _bump_excluded,
     _merge_exclusions,
 )
@@ -123,23 +123,23 @@ class TestIsGroupingCategoryHeading:
 
     def test_by_place_topic_is_grouping(self):
         """Should identify 'By place/topic' as grouping header."""
-        assert _is_grouping_category_heading("By place/topic") is True
+        assert _is_heading_generic("By place/topic") is True
 
     def test_by_place_topic_subject_is_grouping(self):
         """Should identify 'By place/topic/subject' as grouping header."""
-        assert _is_grouping_category_heading("By place/topic/subject") is True
+        assert _is_heading_generic("By place/topic/subject") is True
 
     def test_by_topic_subject_is_grouping(self):
         """Should identify 'By topic/subject' as grouping header."""
-        assert _is_grouping_category_heading("By topic/subject") is True
+        assert _is_heading_generic("By topic/subject") is True
 
     def test_by_place_not_grouping(self):
         """Should NOT identify standalone 'By place' as grouping header."""
-        assert _is_grouping_category_heading("By place") is False
+        assert _is_heading_generic("By place") is False
 
     def test_none_not_grouping(self):
         """Should handle None input."""
-        assert _is_grouping_category_heading(None) is False
+        assert _is_heading_generic(None) is False
 
 
 class TestBumpExcluded:

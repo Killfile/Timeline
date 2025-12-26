@@ -335,8 +335,10 @@ def insert_event(conn, event: dict, category: str | None):
 
     insert_sql = """
         INSERT INTO historical_events
-            (title, description, start_year, end_year, is_bc_start, is_bc_end, weight, category, wikipedia_url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (title, description, start_year, start_month, start_day, 
+             end_year, end_month, end_day, 
+             is_bc_start, is_bc_end, weight, category, wikipedia_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT ON CONSTRAINT uq_historical_events_identity DO NOTHING
         RETURNING id
     """
@@ -345,7 +347,11 @@ def insert_event(conn, event: dict, category: str | None):
         event["title"],
         event.get("description"),
         event.get("start_year"),
+        event.get("start_month"),
+        event.get("start_day"),
         event.get("end_year"),
+        event.get("end_month"),
+        event.get("end_day"),
         event.get("is_bc_start", False),
         event.get("is_bc_end", False),
         event.get("weight"),
@@ -367,8 +373,10 @@ def insert_event(conn, event: dict, category: str | None):
             cursor.execute(
                 """
                 INSERT INTO historical_events
-                    (title, description, start_year, end_year, is_bc_start, is_bc_end, weight, category, wikipedia_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (title, description, start_year, start_month, start_day,
+                     end_year, end_month, end_day,
+                     is_bc_start, is_bc_end, weight, category, wikipedia_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 insert_params,
@@ -391,14 +399,20 @@ def insert_event(conn, event: dict, category: str | None):
                 INSERT INTO event_date_extraction_debug
                     (historical_event_id, pageid, title, category, wikipedia_url,
                      extraction_method, extracted_year_matches,
-                     chosen_start_year, chosen_is_bc_start, chosen_end_year, chosen_is_bc_end,
+                     chosen_start_year, chosen_start_month, chosen_start_day,
+                     chosen_is_bc_start, 
+                     chosen_end_year, chosen_end_month, chosen_end_day,
+                     chosen_is_bc_end,
                      chosen_weight_days,
-                     extract_snippet)
+                     extract_snippet, span_match_notes)
                 VALUES (%s, %s, %s, %s, %s,
                         %s, %s,
-                        %s, %s, %s, %s,
+                        %s, %s, %s,
                         %s,
-                        %s)
+                        %s, %s, %s,
+                        %s,
+                        %s,
+                        %s, %s)
                 """,
                 (
                     event_id,
@@ -409,11 +423,16 @@ def insert_event(conn, event: dict, category: str | None):
                     debug.get("method", "unknown"),
                     json.dumps(debug.get("matches", [])),
                     event.get("start_year"),
+                    event.get("start_month"),
+                    event.get("start_day"),
                     event.get("is_bc_start", False),
                     event.get("end_year"),
+                    event.get("end_month"),
+                    event.get("end_day"),
                     event.get("is_bc_end", False),
                     debug_weight,
                     debug.get("snippet"),
+                    debug.get("span_match_notes"),
                 ),
             )
 

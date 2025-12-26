@@ -278,9 +278,34 @@ function updateTimelineMarkers(newEvents) {
     const renderData = newEvents.filter(e => e.start_year !== null);
 
     // --- Global sublane layout (no category segregation) ---
-    function toYearNumber(year, isBc) {
+    function toYearNumber(year, isBc, month = null, day = null) {
         if (year === null || year === undefined) return null;
-        return isBc ? -year : year;
+        
+        let fractionalYear = isBc ? -year : year;
+        
+        // Add month and day precision if available
+        if (month !== null && month !== undefined) {
+            // Days in each month (non-leap year approximation)
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            
+            // Calculate day of year
+            let dayOfYear = 0;
+            for (let i = 0; i < month - 1; i++) {
+                dayOfYear += daysInMonth[i];
+            }
+            if (day !== null && day !== undefined) {
+                dayOfYear += day;
+            } else {
+                // If only month is specified, use middle of month
+                dayOfYear += Math.floor(daysInMonth[month - 1] / 2);
+            }
+            
+            // Add fractional year (approximate 365 days per year)
+            const yearFraction = dayOfYear / 365.0;
+            fractionalYear += (isBc ? -yearFraction : yearFraction);
+        }
+        
+        return fractionalYear;
     }
 
     function hasSpan(d) {
@@ -437,13 +462,13 @@ function updateTimelineMarkers(newEvents) {
 
     // Helper functions for positioning
     function getStartX(d, scale) {
-        const n = toYearNumber(d.start_year, d.is_bc_start);
+        const n = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
         return n === null ? null : scale(n);
     }
 
     function getEndX(d, scale) {
         if (!hasSpan(d)) return null;
-        const n = toYearNumber(d.end_year, d.is_bc_end);
+        const n = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
         return n === null ? null : scale(n);
     }
 
@@ -843,9 +868,34 @@ function renderTimeline() {
     const renderData = filteredEvents.filter(e => e.start_year !== null);
 
     // --- Global sublane layout (no category segregation) ---
-    function toYearNumber(year, isBc) {
+    function toYearNumber(year, isBc, month = null, day = null) {
         if (year === null || year === undefined) return null;
-        return isBc ? -year : year;
+        
+        let fractionalYear = isBc ? -year : year;
+        
+        // Add month and day precision if available
+        if (month !== null && month !== undefined) {
+            // Days in each month (non-leap year approximation)
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            
+            // Calculate day of year
+            let dayOfYear = 0;
+            for (let i = 0; i < month - 1; i++) {
+                dayOfYear += daysInMonth[i];
+            }
+            if (day !== null && day !== undefined) {
+                dayOfYear += day;
+            } else {
+                // If only month is specified, use middle of month
+                dayOfYear += Math.floor(daysInMonth[month - 1] / 2);
+            }
+            
+            // Add fractional year (approximate 365 days per year)
+            const yearFraction = dayOfYear / 365.0;
+            fractionalYear += (isBc ? -yearFraction : yearFraction);
+        }
+        
+        return fractionalYear;
     }
 
     function hasSpan(d) {
@@ -997,13 +1047,13 @@ function renderTimeline() {
     const groupsMerged = eventGroups.merge(groupsEnter);
 
     function getStartX(d, scale) {
-        const n = toYearNumber(d.start_year, d.is_bc_start);
+        const n = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
         return n === null ? null : scale(n);
     }
 
     function getEndX(d, scale) {
         if (!hasSpan(d)) return null;
-        const n = toYearNumber(d.end_year, d.is_bc_end);
+        const n = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
         return n === null ? null : scale(n);
     }
 
@@ -1205,19 +1255,44 @@ function zoomed(event) {
         return d.end_year !== null && d.end_year !== undefined;
     }
 
-    function toYearNumber(year, isBc) {
+    function toYearNumber(year, isBc, month = null, day = null) {
         if (year === null || year === undefined) return null;
-        return isBc ? -year : year;
+        
+        let fractionalYear = isBc ? -year : year;
+        
+        // Add month and day precision if available
+        if (month !== null && month !== undefined) {
+            // Days in each month (non-leap year approximation)
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            
+            // Calculate day of year
+            let dayOfYear = 0;
+            for (let i = 0; i < month - 1; i++) {
+                dayOfYear += daysInMonth[i];
+            }
+            if (day !== null && day !== undefined) {
+                dayOfYear += day;
+            } else {
+                // If only month is specified, use middle of month
+                dayOfYear += Math.floor(daysInMonth[month - 1] / 2);
+            }
+            
+            // Add fractional year (approximate 365 days per year)
+            const yearFraction = dayOfYear / 365.0;
+            fractionalYear += (isBc ? -yearFraction : yearFraction);
+        }
+        
+        return fractionalYear;
     }
 
     function getStartX(d, scale) {
-        const n = toYearNumber(d.start_year, d.is_bc_start);
+        const n = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
         return n === null ? null : scale(n);
     }
 
     function getEndX(d, scale) {
         if (!hasSpan(d)) return null;
-        const n = toYearNumber(d.end_year, d.is_bc_end);
+        const n = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
         return n === null ? null : scale(n);
     }
 
@@ -1431,7 +1506,9 @@ function resetEventDebugUI() {
     const dl = document.getElementById('event-debug-dl');
     const strat = document.getElementById('event-debug-strategy');
     const start = document.getElementById('event-debug-start');
+    const startDetails = document.getElementById('event-debug-start-details');
     const end = document.getElementById('event-debug-end');
+    const endDetails = document.getElementById('event-debug-end-details');
     const weight = document.getElementById('event-debug-weight');
 
     if (loading) loading.classList.add('hidden');
@@ -1442,7 +1519,9 @@ function resetEventDebugUI() {
     if (dl) dl.classList.add('hidden');
     if (strat) strat.textContent = '-';
     if (start) start.textContent = '-';
+    if (startDetails) startDetails.textContent = '-';
     if (end) end.textContent = '-';
+    if (endDetails) endDetails.textContent = '-';
     if (weight) weight.textContent = '-';
 }
 
@@ -1472,16 +1551,49 @@ async function loadEventExtractionDebug(eventId) {
         if (!selectedEvent || selectedEvent.id !== eventId) return;
 
         const strat = document.getElementById('event-debug-strategy');
+        const matchType = document.getElementById('event-debug-match-type');
         const start = document.getElementById('event-debug-start');
+        const startDetails = document.getElementById('event-debug-start-details');
         const end = document.getElementById('event-debug-end');
-    const weight = document.getElementById('event-debug-weight');
+        const endDetails = document.getElementById('event-debug-end-details');
+        const weight = document.getElementById('event-debug-weight');
 
         if (strat) strat.textContent = dbg.extraction_method || '-';
+        if (matchType) matchType.textContent = dbg.span_match_notes || '-';
 
         const startFmt = formatDebugYear(dbg.chosen_start_year, dbg.chosen_is_bc_start);
         const endFmt = formatDebugYear(dbg.chosen_end_year, dbg.chosen_is_bc_end);
         if (start) start.textContent = startFmt || '-';
         if (end) end.textContent = endFmt || '-';
+
+        // Show month/day details from debug table
+        if (startDetails) {
+            const month = dbg.chosen_start_month;
+            const day = dbg.chosen_start_day;
+            if (month && day) {
+                const monthName = new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' });
+                startDetails.textContent = `${monthName} ${day}`;
+            } else if (month) {
+                const monthName = new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' });
+                startDetails.textContent = monthName;
+            } else {
+                startDetails.textContent = '-';
+            }
+        }
+
+        if (endDetails) {
+            const month = dbg.chosen_end_month;
+            const day = dbg.chosen_end_day;
+            if (month && day) {
+                const monthName = new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' });
+                endDetails.textContent = `${monthName} ${day}`;
+            } else if (month) {
+                const monthName = new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' });
+                endDetails.textContent = monthName;
+            } else {
+                endDetails.textContent = '-';
+            }
+        }
 
         // Prefer debug table field; fall back to the event row's weight.
         const w = (dbg.chosen_weight_days !== null && dbg.chosen_weight_days !== undefined)

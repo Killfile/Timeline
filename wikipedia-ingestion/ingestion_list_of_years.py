@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
-
+from span_parser import SpanParser
 from bs4 import BeautifulSoup
 
 try:
@@ -326,7 +326,7 @@ def _get_tag_and_month_from_h3_context(h3_text: str | None) -> tuple[str | None,
     return raw, None
 
 
-def _is_grouping_category_heading(h3_text: str | None) -> bool:
+def _is_heading_generic(h3_text: str | None) -> bool:
     """Return True for generic group headings that should not be treated as tags.
     
     Args:
@@ -398,7 +398,7 @@ def _extract_events_section_items_with_report(html: str) -> tuple[list[dict], di
 
         if node.name == "h3":
             h3_text = node.get_text(" ", strip=True)
-            current_h3 = None if _is_grouping_category_heading(h3_text) else (h3_text or None)
+            current_h3 = None if _is_heading_generic(h3_text) else (h3_text or None)
             current_h4 = None
             continue
 
@@ -515,53 +515,6 @@ def _infer_page_era_from_html(html: str, *, scope_is_bc: bool | None) -> bool | 
     return scope_is_bc
 
 
-def _parse_span_from_bullet(text: str, *, assume_is_bc: bool | None = None) -> dict | None:
-    if not text:
-        return None
-    t = text.strip()
-
-    lead = re.sub(r"^\s+", "", t)
-    if re.match(r"^(c\s*\.|ca\s*\.|circa)(\s|$)", lead, flags=re.IGNORECASE):
-        return None
-
-    t_norm = _DASH_RE.sub("-", t)
-
-    m = re.search(
-        r"(?<!\d)(\d{1,4})\s*(BC|BCE|AD|CE)?\s*-\s*(\d{1,4})\s*(BC|BCE|AD|CE)?",
-        t_norm,
-        flags=re.IGNORECASE,
-    )
-    if m:
-        s_y = int(m.group(1))
-        s_era = (m.group(2) or "").upper()
-        e_y = int(m.group(3))
-        e_era = (m.group(4) or "").upper()
-
-        is_bc = ("BC" in s_era) or ("BC" in e_era) or ("BCE" in s_era) or ("BCE" in e_era)
-        is_ad = ("AD" in s_era) or ("AD" in e_era) or ("CE" in s_era) or ("CE" in e_era)
-        if is_bc and is_ad:
-            return None
-
-        if not is_bc and not is_ad and assume_is_bc is not None:
-            is_bc = bool(assume_is_bc)
-
-        start_year = min(s_y, e_y)
-        end_year = max(s_y, e_y)
-        return {"start_year": start_year, "end_year": end_year, "is_bc": bool(is_bc and not is_ad), "precision": "year"}
-
-    m = re.search(r"(?<!\d)(\d{1,4})\s*(BC|BCE|AD|CE)\b", t_norm, flags=re.IGNORECASE)
-    if m:
-        y = int(m.group(1))
-        era = (m.group(2) or "").upper()
-        is_bc = era in {"BC", "BCE"}
-        return {"start_year": y, "end_year": y, "is_bc": is_bc, "precision": "year"}
-
-    m = re.search(r"(?<!\d)(\d{3,4})(?!\d)", t_norm)
-    if m:
-        y = int(m.group(1))
-        return {"start_year": y, "end_year": y, "is_bc": bool(assume_is_bc) if assume_is_bc is not None else False, "precision": "year"}
-
-    return None
 
 
 def ingest_wikipedia_list_of_years(conn) -> None:
@@ -684,33 +637,24 @@ def ingest_wikipedia_list_of_years(conn) -> None:
             bullet_text = (b or "").strip()
             is_circa = bool(re.match(r"^\s*(c\.|ca\.|circa)\b", bullet_text, flags=re.IGNORECASE))
 
-            bullet_span = None if is_circa else _parse_span_from_bullet(bullet_text, assume_is_bc=page_assume_is_bc)
+            bullet_span = None if is_circa else SpanParser.parse_span_from_bullet(bullet_text, scope["start_year"], assume_is_bc=page_assume_is_bc)
+            
             effective_start_year = scope["start_year"]
             effective_end_year = scope["end_year"]
             effective_is_bc = bool(page_assume_is_bc) if page_assume_is_bc is not None else scope_is_bc
             precision = scope["precision"]
+            span_match_notes = ""
 
             if bullet_span is not None:
-                precision = bullet_span.get("precision", precision)
-                effective_start_year = bullet_span["start_year"]
-                effective_end_year = bullet_span["end_year"]
-                effective_is_bc = bool(bullet_span.get("is_bc", False))
-
-            if precision == "year":
-                effective_end_year = int(effective_start_year) + 1
-
-            if is_circa:
-                effective_start_year = scope["start_year"]
-                effective_end_year = scope["end_year"]
-                effective_is_bc = bool(page_assume_is_bc) if page_assume_is_bc is not None else scope_is_bc
-                precision = scope["precision"]
-
-            has_any_year_number = bool(re.search(r"(?<!\d)\d{1,4}(?!\d)", bullet_text))
-            if not has_any_year_number:
-                effective_start_year = scope["start_year"]
-                effective_end_year = scope["end_year"]
-                effective_is_bc = bool(page_assume_is_bc) if page_assume_is_bc is not None else scope_is_bc
-                precision = scope["precision"]
+                precision = bullet_span.precision
+                effective_start_year = bullet_span.start_year
+                effective_start_month = bullet_span.start_month
+                effective_start_day = bullet_span.start_day
+                effective_end_year = bullet_span.end_year
+                effective_end_month = bullet_span.end_month
+                effective_end_day = bullet_span.end_day
+                effective_is_bc = bullet_span.is_bc
+                span_match_notes = bullet_span.match_type
 
             category_value = tag or None
 
@@ -730,7 +674,11 @@ def ingest_wikipedia_list_of_years(conn) -> None:
                 "description": b[:500],
                 "url": canonical_url,
                 "start_year": effective_start_year,
+                "start_month": effective_start_month,
+                "start_day": effective_start_day,
                 "end_year": effective_end_year,
+                "end_month": effective_end_month,
+                "end_day": effective_end_day,
                 "is_bc_start": effective_is_bc,
                 "is_bc_end": effective_is_bc,
                 "pageid": pageid,
@@ -744,6 +692,7 @@ def ingest_wikipedia_list_of_years(conn) -> None:
                     "scope": scope,
                     "bullet_span": bullet_span,
                     "source_page": {"title": title, "url": canonical_url},
+                    "span_match_notes": span_match_notes,
                 },
             }
 

@@ -30,7 +30,7 @@ try:
         _extract_events_section_items,
         _infer_page_era_from_html,
         _parse_scope_from_title,
-        _parse_span_from_bullet,
+        #_parse_span_from_bullet,
     )
 except ImportError:  # pragma: no cover
     from ingestion_common import clear_previously_ingested, connect_db, insert_event, log_error, log_info
@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover
         _extract_events_section_items,
         _infer_page_era_from_html,
         _parse_scope_from_title,
-        _parse_span_from_bullet,
+        #_parse_span_from_bullet,
     )
 
 

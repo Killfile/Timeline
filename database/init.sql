@@ -4,7 +4,11 @@ CREATE TABLE IF NOT EXISTS historical_events (
     title VARCHAR(500) NOT NULL,
     description TEXT,
     start_year INTEGER,
+    start_month INTEGER,
+    start_day INTEGER,
     end_year INTEGER,
+    end_month INTEGER,
+    end_day INTEGER,
     is_bc_start BOOLEAN DEFAULT FALSE,
     is_bc_end BOOLEAN DEFAULT FALSE,
     -- Derived metric: approximate span length in days.
@@ -44,14 +48,19 @@ CREATE TABLE IF NOT EXISTS event_date_extraction_debug (
     extraction_method TEXT NOT NULL,
     extracted_year_matches JSONB,
     chosen_start_year INTEGER,
+    chosen_start_month INTEGER,
+    chosen_start_day INTEGER,
     chosen_is_bc_start BOOLEAN DEFAULT FALSE,
     chosen_end_year INTEGER,
+    chosen_end_month INTEGER,
+    chosen_end_day INTEGER,
     chosen_is_bc_end BOOLEAN DEFAULT FALSE,
 
     -- Derived metric aligned with historical_events.weight.
     chosen_weight_days INTEGER,
 
     extract_snippet TEXT,
+    span_match_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

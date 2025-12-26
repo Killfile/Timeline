@@ -40,7 +40,11 @@ class HistoricalEvent(BaseModel):
     title: str
     description: Optional[str] = None
     start_year: Optional[int] = None
+    start_month: Optional[int] = None
+    start_day: Optional[int] = None
     end_year: Optional[int] = None
+    end_month: Optional[int] = None
+    end_day: Optional[int] = None
     is_bc_start: bool = False
     is_bc_end: bool = False
     weight: Optional[int] = None
@@ -63,8 +67,12 @@ class ExtractionDebug(BaseModel):
     extraction_method: str
     extracted_year_matches: Optional[Any] = None
     chosen_start_year: Optional[int] = None
+    chosen_start_month: Optional[int] = None
+    chosen_start_day: Optional[int] = None
     chosen_is_bc_start: bool = False
     chosen_end_year: Optional[int] = None
+    chosen_end_month: Optional[int] = None
+    chosen_end_day: Optional[int] = None
     chosen_is_bc_end: bool = False
     chosen_weight_days: Optional[int] = None
     extract_snippet: Optional[str] = None
@@ -73,6 +81,7 @@ class ExtractionDebug(BaseModel):
     category: Optional[str] = None
     wikipedia_url: Optional[str] = None
     created_at: Optional[datetime] = None
+    span_match_notes: Optional[str] = None
 
     # Convenience echo from historical_events (so UI has a stable place to read it)
     event_weight: Optional[int] = None
@@ -189,7 +198,8 @@ def get_events(
                 bin_end = padded_min + padded_span * (i + 1) / num_bins
                 
                 subquery = """
-                    (SELECT id, title, description, start_year, end_year,
+                    (SELECT id, title, description, start_year, start_month, start_day,
+                            end_year, end_month, end_day,
                             is_bc_start, is_bc_end, weight, category, wikipedia_url,
                             %s as bin_num,
                             ROW_NUMBER() OVER (ORDER BY weight DESC, id) as rank_in_bin
@@ -215,7 +225,8 @@ def get_events(
             # This ensures we get a balanced sample across the timeline
             query = " UNION ALL ".join(query_parts)
             query = f"""
-                SELECT id, title, description, start_year, end_year,
+                SELECT id, title, description, start_year, start_month, start_day,
+                       end_year, end_month, end_day,
                        is_bc_start, is_bc_end, weight, category, wikipedia_url
                 FROM ({query}) AS all_bins
                 ORDER BY rank_in_bin, bin_num
@@ -226,7 +237,8 @@ def get_events(
         else:
             # Legacy mode: no viewport, just filter by start/end year and category.
             query = """
-                SELECT id, title, description, start_year, end_year, 
+                SELECT id, title, description, start_year, start_month, start_day,
+                       end_year, end_month, end_day,
                        is_bc_start, is_bc_end, weight, category, wikipedia_url
                 FROM historical_events 
                 WHERE 1=1
@@ -307,8 +319,12 @@ def get_event_extraction_debug(event_id: int):
              d.extraction_method,
              d.extracted_year_matches,
              d.chosen_start_year,
+             d.chosen_start_month,
+             d.chosen_start_day,
              d.chosen_is_bc_start,
              d.chosen_end_year,
+             d.chosen_end_month,
+             d.chosen_end_day,
              d.chosen_is_bc_end,
              d.chosen_weight_days,
              d.extract_snippet,
@@ -317,6 +333,7 @@ def get_event_extraction_debug(event_id: int):
              d.category,
              d.wikipedia_url,
              d.created_at,
+             d.span_match_notes,
              e.weight AS event_weight
          FROM event_date_extraction_debug d
          JOIN historical_events e ON e.id = d.historical_event_id
