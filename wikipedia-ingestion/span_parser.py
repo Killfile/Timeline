@@ -69,7 +69,9 @@ class SpanParser:
         if return_value is not None:
             return return_value
         
-        return None
+        return_value = Span(start_year=span_year, start_month=1, start_day=1, end_year=span_year, end_month=12, end_day=31, is_bc=bool(assume_is_bc), precision="year", match_type="Default to full year span when no date info found.")
+        
+        return return_value
 
     @staticmethod
     def month_name_to_number(month_name: str) -> int | None:
