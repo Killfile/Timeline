@@ -301,8 +301,11 @@ function updateTimelineMarkers(newEvents) {
             }
             
             // Add fractional year (approximate 365 days per year)
+            // For BC dates: -44 BC is represented as -44, January 1 should be closer to -43 (less negative)
+            // For AD dates: 44 AD is represented as 44, January 1 should be closer to 44 (start of year)
+            // In both cases, we ADD the fraction to move forward through the year
             const yearFraction = dayOfYear / 365.0;
-            fractionalYear += (isBc ? -yearFraction : yearFraction);
+            fractionalYear += yearFraction;
         }
         
         return fractionalYear;
@@ -641,8 +644,8 @@ async function updateStats() {
 // Format year display for axis ticks, adapting to zoom level
 // When zoomed in beyond 1 year, show months and days instead of decimals
 function formatYearDisplay(year, viewportSpan) {
-    const absYear = Math.abs(year);
     const isBC = year < 0;
+    const absYear = Math.abs(year);
     const suffix = isBC ? ' BC' : ' AD';
     
     // If viewport span is undefined, fall back to simple year display
@@ -655,10 +658,23 @@ function formatYearDisplay(year, viewportSpan) {
         return Math.round(absYear) + suffix;
     }
     
+    // For BC dates: -43.8 represents March 44 BC
+    // We need to extract: year=44, fraction=0.2 (not 0.8)
+    // For AD dates: 43.8 represents October 43 AD
+    // We need to extract: year=43, fraction=0.8
+    let wholeYear, fractionalYear;
+    if (isBC) {
+        // For BC: -43.8 means 44 BC, 20% into the year
+        wholeYear = Math.ceil(absYear);  // 44
+        fractionalYear = wholeYear - absYear;  // 44 - 43.8 = 0.2
+    } else {
+        // For AD: normal calculation
+        wholeYear = Math.floor(absYear);  // 43
+        fractionalYear = absYear - wholeYear;  // 43.8 - 43 = 0.8
+    }
+    
     // For spans 0.1 to 2 years, show year and month
     if (viewportSpan > 0.1) {
-        const wholeYear = Math.floor(absYear);
-        const fractionalYear = absYear - wholeYear;
         const month = Math.floor(fractionalYear * 12) + 1; // 1-12
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                            'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -666,8 +682,6 @@ function formatYearDisplay(year, viewportSpan) {
     }
     
     // For spans < 0.1 years (~36 days), show month and day
-    const wholeYear = Math.floor(absYear);
-    const fractionalYear = absYear - wholeYear;
     const dayOfYear = Math.floor(fractionalYear * 365) + 1; // 1-365
     
     // Convert day of year to month and day
@@ -891,8 +905,11 @@ function renderTimeline() {
             }
             
             // Add fractional year (approximate 365 days per year)
+            // For BC dates: -44 BC is represented as -44, January 1 should be closer to -43 (less negative)
+            // For AD dates: 44 AD is represented as 44, January 1 should be closer to 44 (start of year)
+            // In both cases, we ADD the fraction to move forward through the year
             const yearFraction = dayOfYear / 365.0;
-            fractionalYear += (isBc ? -yearFraction : yearFraction);
+            fractionalYear += yearFraction;
         }
         
         return fractionalYear;
@@ -1278,8 +1295,11 @@ function zoomed(event) {
             }
             
             // Add fractional year (approximate 365 days per year)
+            // For BC dates: -44 BC is represented as -44, January 1 should be closer to -43 (less negative)
+            // For AD dates: 44 AD is represented as 44, January 1 should be closer to 44 (start of year)
+            // In both cases, we ADD the fraction to move forward through the year
             const yearFraction = dayOfYear / 365.0;
-            fractionalYear += (isBc ? -yearFraction : yearFraction);
+            fractionalYear += yearFraction;
         }
         
         return fractionalYear;
