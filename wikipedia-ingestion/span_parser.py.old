@@ -309,26 +309,45 @@ class SpanParser:
         if re.match(r"^(c\s*\.|ca\s*\.|circa)(\s|$)", lead, flags=re.IGNORECASE):
             return None
 
-        text_to_parse = SpanParser._DASH_RE.sub("-", t)
+        t_norm = SpanParser._DASH_RE.sub("-", t)
 
-        parser_steps = [
-            SpanParsers.MONTH_AND_DAY_RANGE_WITHIN_PAGE_SPAN_ACROSS_YEARS,
-            SpanParsers.MONTH_AND_DAY_RANGE_WITHIN_PAGE_SPAN_ACROSS_MONTHS,
-            SpanParsers.MONTH_AND_DAY_RANGE_WITHIN_PAGE_SPAN,
-            SpanParsers.MONTH_AND_DAY_WITHIN_PAGE_SPAN,
-            SpanParsers.MONTH_ONLY_WITHIN_PAGE_SPAN,
-            SpanParsers.YEAR_RANGE,
-            SpanParsers.YEAR_WITH_EXPLICIT_ERA,
-            SpanParsers.YEAR_ONLY,
-        ]
+        return_value = SpanParser._parse_month_and_day_range_within_page_span_across_years(t_norm, span_year, bool(assume_is_bc))
+        if return_value is not None:
+            return return_value
 
-        for step in parser_steps:
-            parser = SpanParserFactory.get_parser(step)
-            return_value = parser.parse(text_to_parse, span_year, bool(assume_is_bc))
-            if return_value is not None:
-                return return_value
+        return_value = SpanParser._parse_month_and_day_range_within_page_span_across_months(t_norm, span_year, bool(assume_is_bc))
+        if return_value is not None:
+            return return_value
 
+        return_value = SpanParser._parse_month_and_day_range_within_page_span(t_norm, span_year, bool(assume_is_bc))
+        if return_value is not None:
+            return return_value
         
+        return_value = SpanParser._parse_month_and_day_within_page_span(t_norm, span_year, page_bc=bool(assume_is_bc))
+        if return_value is not None:
+            return return_value
+        
+        return_value = SpanParser._parse_month_only_within_page_span(t_norm, span_year, bool(assume_is_bc))
+        if return_value is not None:
+            return return_value
+        
+
+        return_value = SpanParser._parse_year_range(t_norm, assume_is_bc)
+        if return_value is not None:
+            return return_value
+        
+
+        return_value = SpanParser._parse_year_with_explicit_era(t_norm)
+        if return_value is not None:
+            return return_value
+        
+        return_value = SpanParser._parse_year_only(t_norm, assume_is_bc)
+        if return_value is not None:
+            return return_value
+        
+        return_value = Span(start_year=span_year, start_month=1, start_day=1, end_year=span_year, end_month=12, end_day=31, is_bc=bool(assume_is_bc), precision="year", match_type="Default to full year span when no date info found.")
+        
+        return return_value
 
     @staticmethod
     def _validate_span(span: Span) -> bool:

@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
-from span_parser import SpanParser
+from span_parsing import SpanParser
 from bs4 import BeautifulSoup
 
 try:

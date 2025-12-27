@@ -57,6 +57,8 @@ These instructions apply to all Copilot-generated code and edits in this repo.
   - Well-structured assertions
   - Avoid complex logic in tests
 - Target 80%+ code coverage for any new/changed logic.
+- Preference running all tests as part of any changes.
+- Prefer parameterized tests over multiple asserts in a single test.
 
 ### Python
 
@@ -70,6 +72,7 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Pass variables explicitly rather than relying on closures or outer scope.
 - Use type hints for function parameters and return values.
 - Prefer using dictionaries or data classes for structured data rather than tuples or lists.
+- When running python tests or any local python code, ALWAYS run them in a virtual environment to avoid dependency conflicts.
 
 ### Frontend (JS)
 
