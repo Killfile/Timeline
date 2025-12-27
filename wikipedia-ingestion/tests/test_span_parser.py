@@ -7,34 +7,45 @@ from span_parsing import SpanParser, Span
 class TestSpanParser:
     """Test cases for the main SpanParser class."""
     
-    def test_is_circa_text_variations(self):
-        """Test detection of circa text in various formats."""
-        assert SpanParser.is_circa_text("c. 500 BC") is True  # Note: needs space or word boundary
-        assert SpanParser.is_circa_text("ca. 500 BC") is True
-        assert SpanParser.is_circa_text("circa 500 BC") is True
-        assert SpanParser.is_circa_text("  c. 500 BC") is True
-        assert SpanParser.is_circa_text("C. 500 BC") is True
-        assert SpanParser.is_circa_text("CIRCA 500 BC") is True
+    @pytest.mark.parametrize("text", [
+        "c. 500 BC",
+        "ca. 500 BC",
+        "circa 500 BC",
+        "  c. 500 BC",
+        "C. 500 BC",
+        "CIRCA 500 BC",
+    ])
+    def test_is_circa_text_variations_true(self, text):
+        """Test detection of circa text in various formats that should match."""
+        assert SpanParser.is_circa_text(text) is True
+    
+    @pytest.mark.parametrize("text", [
+        "490 BC",
+        "December 25",
+    ])
+    def test_is_circa_text_variations_false(self, text):
+        """Test that non-circa text doesn't match."""
         # These don't match because \b after . doesn't work as expected with digits following
         # but parse_span_from_bullet has different logic that works correctly
-        assert SpanParser.is_circa_text("490 BC") is False
-        assert SpanParser.is_circa_text("December 25") is False
+        assert SpanParser.is_circa_text(text) is False
     
-    def test_parse_span_from_bullet_rejects_circa(self):
+    @pytest.mark.parametrize("text", [
+        "c. 490 BC",
+        "ca. 490 BC",
+        "circa 490 BC",
+    ])
+    def test_parse_span_from_bullet_rejects_circa(self, text):
         """Test that circa dates are rejected."""
-        result = SpanParser.parse_span_from_bullet("c. 490 BC", 490, assume_is_bc=True)
-        assert result is None
-        
-        result = SpanParser.parse_span_from_bullet("ca. 490 BC", 490, assume_is_bc=True)
-        assert result is None
-        
-        result = SpanParser.parse_span_from_bullet("circa 490 BC", 490, assume_is_bc=True)
+        result = SpanParser.parse_span_from_bullet(text, 490, assume_is_bc=True)
         assert result is None
     
-    def test_parse_span_from_bullet_empty_text(self):
+    @pytest.mark.parametrize("text", [
+        "",
+        None,
+    ])
+    def test_parse_span_from_bullet_empty_text(self, text):
         """Test that empty text returns None."""
-        assert SpanParser.parse_span_from_bullet("", 490, assume_is_bc=True) is None
-        assert SpanParser.parse_span_from_bullet(None, 490, assume_is_bc=True) is None
+        assert SpanParser.parse_span_from_bullet(text, 490, assume_is_bc=True) is None
     
     def test_parse_span_from_bullet_tries_parsers_in_order(self):
         """Test that parsers are tried in correct priority order."""
@@ -94,62 +105,55 @@ class TestSpanParser:
         assert result.start_year == 490
         assert result.is_bc is True
     
-    def test_dash_normalization(self):
+    @pytest.mark.parametrize("text", [
+        "490 – 479 BC",  # en dash
+        "490 — 479 BC",  # em dash
+        "490 − 479 BC",  # minus
+        "490 - 479 BC",  # hyphen
+    ])
+    def test_dash_normalization(self, text):
         """Test that various dash characters are normalized."""
-        test_cases = [
-            "490 – 479 BC",  # en dash
-            "490 — 479 BC",  # em dash
-            "490 − 479 BC",  # minus
-            "490 - 479 BC",  # hyphen
-        ]
-        for text in test_cases:
-            result = SpanParser.parse_span_from_bullet(text, 490, assume_is_bc=True)
-            assert result is not None, f"Failed to parse: {text}"
+        result = SpanParser.parse_span_from_bullet(text, 490, assume_is_bc=True)
+        assert result is not None, f"Failed to parse: {text}"
     
-    def test_month_name_to_number_all_months(self):
-        """Test month name conversion for all months."""
-        expected = {
-            "january": 1, "february": 2, "march": 3, "april": 4,
-            "may": 5, "june": 6, "july": 7, "august": 8,
-            "september": 9, "october": 10, "november": 11, "december": 12
-        }
-        for name, number in expected.items():
-            assert SpanParser.month_name_to_number(name) == number
-            assert SpanParser.month_name_to_number(name.upper()) == number
-            assert SpanParser.month_name_to_number(name.title()) == number
+    @pytest.mark.parametrize("month_name,expected_number", [
+        ("january", 1), ("february", 2), ("march", 3), ("april", 4),
+        ("may", 5), ("june", 6), ("july", 7), ("august", 8),
+        ("september", 9), ("october", 10), ("november", 11), ("december", 12),
+    ])
+    def test_month_name_to_number_all_months(self, month_name, expected_number):
+        """Test month name conversion for all months in various cases."""
+        assert SpanParser.month_name_to_number(month_name) == expected_number
+        assert SpanParser.month_name_to_number(month_name.upper()) == expected_number
+        assert SpanParser.month_name_to_number(month_name.title()) == expected_number
     
-    def test_month_name_to_number_invalid(self):
+    @pytest.mark.parametrize("invalid_name", [
+        "octember",
+        "notamonth",
+        "",
+    ])
+    def test_month_name_to_number_invalid(self, invalid_name):
         """Test that invalid month names return None."""
-        assert SpanParser.month_name_to_number("octember") is None
-        assert SpanParser.month_name_to_number("notamonth") is None
-        assert SpanParser.month_name_to_number("") is None
+        assert SpanParser.month_name_to_number(invalid_name) is None
     
-    def test_validate_span_normal_BC_dates(self):
+    @pytest.mark.parametrize("span_kwargs,expected_valid", [
+        ({"start_year": 490, "end_year": 490, "start_month": 9, "start_day": 25, "end_month": 9, "end_day": 25, "is_bc": True, "precision": "day", "match_type": "test"}, True),
+        ({"start_year": 490, "end_year": 490, "start_month": 9, "start_day": 25, "end_month": 9, "end_day": 28, "is_bc": True, "precision": "day", "match_type": "test"}, True),
+        ({"start_year": 490, "end_year": 490, "start_month": 9, "start_day": 1, "end_month": 10, "end_day": 31, "is_bc": True, "precision": "month", "match_type": "test"}, True),
+        ({"start_year": 490, "end_year": 479, "start_month": 1, "start_day": 1, "end_month": 12, "end_day": 31, "is_bc": True, "precision": "year", "match_type": "test"}, True),
+    ])
+    def test_validate_span_normal_BC_dates(self, span_kwargs, expected_valid):
         """Test validation of normal date spans."""
-        # Valid single day
-        span = Span(490, 490, 9, 25, 9, 25, True, "day", "test")
-        assert SpanParser._validate_span(span) is True
-        
-        # Valid day range
-        span = Span(490, 490, 9, 25, 9, 28, True, "day", "test")
-        assert SpanParser._validate_span(span) is True
-        
-        # Valid month range
-        span = Span(490, 490, 9, 1, 10, 31, True, "month", "test")
-        assert SpanParser._validate_span(span) is True
-        
-        # Valid year range
-        span = Span(490, 479, 1, 1, 12, 31, True, "year", "test")
-        assert SpanParser._validate_span(span) is True
+        span = Span(**span_kwargs)
+        assert SpanParser._validate_span(span) is expected_valid
     
-    def test_validate_span_reversed_years_BC(self):
-        """Test that reversed years are invalid."""
-        span = Span(start_year=479, end_year=490, start_month=1, start_day=1, end_month=12, end_day=31, is_bc=True, precision="year", match_type="test")
-        assert SpanParser._validate_span(span) is False
-
-    def test_validate_span_reversed_years_AD(self):
-        """Test that reversed years are invalid."""
-        span = Span(490, 479, 1, 1, 12, 31, False, "year", "test")
+    @pytest.mark.parametrize("span_kwargs,is_bc", [
+        ({"start_year": 479, "end_year": 490, "start_month": 1, "start_day": 1, "end_month": 12, "end_day": 31, "precision": "year", "match_type": "test"}, True),
+        ({"start_year": 490, "end_year": 479, "start_month": 1, "start_day": 1, "end_month": 12, "end_day": 31, "precision": "year", "match_type": "test"}, False),
+    ])
+    def test_validate_span_reversed_years(self, span_kwargs, is_bc):
+        """Test that reversed years are invalid in both BC and AD."""
+        span = Span(**span_kwargs, is_bc=is_bc)
         assert SpanParser._validate_span(span) is False
     
     def test_validate_span_reversed_months(self):
@@ -162,15 +166,14 @@ class TestSpanParser:
         span = Span(490, 490, 9, 28, 9, 25, True, "day", "test")
         assert SpanParser._validate_span(span) is False
     
-    def test_validate_span_year_zero(self):
+    @pytest.mark.parametrize("span_kwargs", [
+        {"start_year": 0, "end_year": 0, "start_month": 1, "start_day": 1, "end_month": 12, "end_day": 31, "is_bc": True, "precision": "year", "match_type": "test"},
+        {"start_year": 1, "end_year": 0, "start_month": 1, "start_day": 1, "end_month": 12, "end_day": 31, "is_bc": True, "precision": "year", "match_type": "test"},
+        {"start_year": 0, "end_year": 1, "start_month": 1, "start_day": 1, "end_month": 12, "end_day": 31, "is_bc": True, "precision": "year", "match_type": "test"},
+    ])
+    def test_validate_span_year_zero(self, span_kwargs):
         """Test that year 0 is invalid."""
-        span = Span(0, 0, 1, 1, 12, 31, True, "year", "test")
-        assert SpanParser._validate_span(span) is False
-        
-        span = Span(1, 0, 1, 1, 12, 31, True, "year", "test")
-        assert SpanParser._validate_span(span) is False
-        
-        span = Span(0, 1, 1, 1, 12, 31, True, "year", "test")
+        span = Span(**span_kwargs)
         assert SpanParser._validate_span(span) is False
     
     def test_return_none_if_invalid_with_none(self):

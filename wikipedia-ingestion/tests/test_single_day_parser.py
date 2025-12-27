@@ -12,59 +12,50 @@ class TestSingleDayParser:
         """Set up test fixtures."""
         self.parser = SingleDayParser()
     
-    def test_valid_ad_date(self):
-        """Test parsing a valid AD single day."""
-        result = self.parser.parse("September 25", 2020, False)
+    @pytest.mark.parametrize("text,page_year,page_bc,expected_month,expected_day", [
+        ("September 25", 2020, False, 9, 25),
+        ("September 25", 490, True, 9, 25),
+    ])
+    def test_valid_dates(self, text, page_year, page_bc, expected_month, expected_day):
+        """Test parsing valid single day dates."""
+        result = self.parser.parse(text, page_year, page_bc)
         assert result is not None
-        assert result.start_year == 2020
-        assert result.start_month == 9
-        assert result.start_day == 25
-        assert result.end_year == 2020
-        assert result.end_month == 9
-        assert result.end_day == 25
-        assert result.is_bc is False
+        assert result.start_year == page_year
+        assert result.start_month == expected_month
+        assert result.start_day == expected_day
+        assert result.end_year == page_year
+        assert result.end_month == expected_month
+        assert result.end_day == expected_day
+        assert result.is_bc is page_bc
         assert result.precision == "day"
     
-    def test_valid_bc_date(self):
-        """Test parsing a valid BC single day."""
-        result = self.parser.parse("September 25", 490, True)
-        assert result is not None
-        assert result.start_year == 490
-        assert result.start_month == 9
-        assert result.start_day == 25
-        assert result.is_bc is True
-    
-    def test_month_name_case_insensitive(self):
+    @pytest.mark.parametrize("text", [
+        "january 15",
+        "JANUARY 15",
+        "January 15",
+    ])
+    def test_month_name_case_insensitive(self, text):
         """Test that month names are case-insensitive."""
-        test_cases = [
-            "january 15",
-            "JANUARY 15",
-            "January 15",
-        ]
-        for text in test_cases:
-            result = self.parser.parse(text, 2020, False)
-            assert result is not None, f"Failed to parse: {text}"
-            assert result.start_month == 1
-            assert result.start_day == 15
+        result = self.parser.parse(text, 2020, False)
+        assert result is not None, f"Failed to parse: {text}"
+        assert result.start_month == 1
+        assert result.start_day == 15
     
     def test_invalid_month_name(self):
         """Test that invalid month names return None."""
         result = self.parser.parse("Octember 15", 2020, False)
         assert result is None
     
-    def test_single_digit_day(self):
-        """Test parsing with single-digit day."""
-        result = self.parser.parse("March 5", 2020, False)
+    @pytest.mark.parametrize("text,expected_day", [
+        ("March 5", 5),
+        ("March 15", 15),
+    ])
+    def test_various_digit_days(self, text, expected_day):
+        """Test parsing with single and double-digit days."""
+        result = self.parser.parse(text, 2020, False)
         assert result is not None
-        assert result.start_day == 5
-        assert result.end_day == 5
-    
-    def test_double_digit_day(self):
-        """Test parsing with double-digit day."""
-        result = self.parser.parse("March 15", 2020, False)
-        assert result is not None
-        assert result.start_day == 15
-        assert result.end_day == 15
+        assert result.start_day == expected_day
+        assert result.end_day == expected_day
     
     def test_page_year_used(self):
         """Test that the page year is correctly applied."""
@@ -86,39 +77,36 @@ class TestSingleDayParser:
         assert result.start_month == 8
         assert result.start_day == 29
     
-    def test_whitespace_variations(self):
+    @pytest.mark.parametrize("text", [
+        "March  15",
+        "March 15 ",
+        " March 15",
+    ])
+    def test_whitespace_variations(self, text):
         """Test parsing with various whitespace patterns."""
-        test_cases = [
-            "March  15",
-            "March 15 ",
-            " March 15",
-        ]
-        for text in test_cases:
-            result = self.parser.parse(text, 2020, False)
-            assert result is not None, f"Failed to parse: {text}"
+        result = self.parser.parse(text, 2020, False)
+        assert result is not None, f"Failed to parse: {text}"
     
-    def test_first_day_of_month(self):
-        """Test parsing first day of month."""
-        result = self.parser.parse("January 1", 2020, False)
+    @pytest.mark.parametrize("text,expected_day", [
+        ("January 1", 1),
+        ("January 31", 31),
+    ])
+    def test_first_and_last_day_of_month(self, text, expected_day):
+        """Test parsing first and last day of month."""
+        result = self.parser.parse(text, 2020, False)
         assert result is not None
-        assert result.start_day == 1
+        assert result.start_day == expected_day
     
-    def test_last_day_of_month(self):
-        """Test parsing last day of month."""
-        result = self.parser.parse("January 31", 2020, False)
-        assert result is not None
-        assert result.start_day == 31
-    
-    def test_all_months(self):
+    @pytest.mark.parametrize("month,expected_month_num", [
+        ("January", 1), ("February", 2), ("March", 3), ("April", 4),
+        ("May", 5), ("June", 6), ("July", 7), ("August", 8),
+        ("September", 9), ("October", 10), ("November", 11), ("December", 12),
+    ])
+    def test_all_months(self, month, expected_month_num):
         """Test parsing dates for all 12 months."""
-        months = [
-            "January", "February", "March", "April", "May", "June",
-            "July", "August", "September", "October", "November", "December"
-        ]
-        for i, month in enumerate(months, start=1):
-            result = self.parser.parse(f"{month} 15", 2020, False)
-            assert result is not None, f"Failed to parse {month}"
-            assert result.start_month == i
+        result = self.parser.parse(f"{month} 15", 2020, False)
+        assert result is not None, f"Failed to parse {month}"
+        assert result.start_month == expected_month_num
     
     def test_february_29_leap_year(self):
         """Test parsing February 29 (leap year day)."""
@@ -135,15 +123,14 @@ class TestSingleDayParser:
         assert result.start_day == 25
         assert result.end_day == 25  # Only single day, not the range
     
-    def test_invalid_day_31_in_april(self):
-        """Test that April 31 is parsed (validation happens elsewhere)."""
-        # Parser will accept it, validation should reject it
-        result = self.parser.parse("April 31", 2020, False)
+    @pytest.mark.parametrize("text,expected_day", [
+        ("April 31", 31),
+        ("January 32", 32),
+    ])
+    def test_invalid_days_parsed_but_validation_elsewhere(self, text, expected_day):
+        """Test that invalid days are parsed (validation happens elsewhere)."""
+        # Parser accepts invalid days; validation should reject them later
+        result = self.parser.parse(text, 2020, False)
         assert result is not None  # Parser accepts it
+        assert result.start_day == expected_day
         # Note: Day validation is not in the parser, it would be in validation layer
-    
-    def test_invalid_day_32(self):
-        """Test that day 32 is parsed (validation happens elsewhere)."""
-        result = self.parser.parse("January 32", 2020, False)
-        assert result is not None  # Parser accepts it
-        # Note: Day validation is not in the parser

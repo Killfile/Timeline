@@ -33,56 +33,45 @@ class TestYearWithEraParser:
         assert result.end_year == 2020
         assert result.is_bc is False
     
-    def test_bce_marker(self):
-        """Test parsing with BCE marker."""
-        result = self.parser.parse("490 BCE", 490, True)
+    @pytest.mark.parametrize("era,expected_bc", [
+        ("BC", True),
+        ("BCE", True),
+        ("AD", False),
+        ("CE", False),
+    ])
+    def test_era_markers(self, era, expected_bc):
+        """Test parsing with different era markers."""
+        year = 490 if expected_bc else 2020
+        result = self.parser.parse(f"{year} {era}", year, expected_bc)
         assert result is not None
-        assert result.is_bc is True
+        assert result.is_bc is expected_bc
     
-    def test_ce_marker(self):
-        """Test parsing with CE marker."""
-        result = self.parser.parse("2020 CE", 2020, False)
-        assert result is not None
-        assert result.is_bc is False
-    
-    def test_era_case_insensitive(self):
+    @pytest.mark.parametrize("text,expected_bc", [
+        ("490 bc", True),
+        ("490 BC", True),
+        ("490 Bc", True),
+        ("490 bC", True),
+        ("2020 ad", False),
+        ("2020 AD", False),
+    ])
+    def test_era_case_insensitive(self, text, expected_bc):
         """Test that era markers are case-insensitive."""
-        test_cases = [
-            ("490 bc", True),
-            ("490 BC", True),
-            ("490 Bc", True),
-            ("490 bC", True),
-            ("2020 ad", False),
-            ("2020 AD", False),
-        ]
-        for text, expected_bc in test_cases:
-            result = self.parser.parse(text, 490 if expected_bc else 2020, expected_bc)
-            assert result is not None, f"Failed to parse: {text}"
-            assert result.is_bc == expected_bc
+        result = self.parser.parse(text, 490 if expected_bc else 2020, expected_bc)
+        assert result is not None, f"Failed to parse: {text}"
+        assert result.is_bc == expected_bc
     
-    def test_one_digit_year(self):
-        """Test parsing with one-digit year."""
-        result = self.parser.parse("5 BC", 5, True)
+    @pytest.mark.parametrize("text,expected_year", [
+        ("5 BC", 5),
+        ("45 BC", 45),
+        ("490 BC", 490),
+        ("2020 AD", 2020),
+    ])
+    def test_various_digit_years(self, text, expected_year):
+        """Test parsing with one, two, three, and four-digit years."""
+        is_bc = "BC" in text
+        result = self.parser.parse(text, expected_year, is_bc)
         assert result is not None
-        assert result.start_year == 5
-    
-    def test_two_digit_year(self):
-        """Test parsing with two-digit year."""
-        result = self.parser.parse("45 BC", 45, True)
-        assert result is not None
-        assert result.start_year == 45
-    
-    def test_three_digit_year(self):
-        """Test parsing with three-digit year."""
-        result = self.parser.parse("490 BC", 490, True)
-        assert result is not None
-        assert result.start_year == 490
-    
-    def test_four_digit_year(self):
-        """Test parsing with four-digit year."""
-        result = self.parser.parse("2020 AD", 2020, False)
-        assert result is not None
-        assert result.start_year == 2020
+        assert result.start_year == expected_year
     
     def test_year_zero_invalid(self):
         """Test that year 0 is rejected."""
@@ -92,30 +81,27 @@ class TestYearWithEraParser:
     def test_must_be_at_start_of_string(self):
         """Test that pattern must be at start of string."""
         result = self.parser.parse("In 490 BC", 490, True)
-        # This should match because regex allows leading whitespace
         assert result is None
     
-    def test_whitespace_between_year_and_era(self):
+    @pytest.mark.parametrize("text", [
+        "490 BC",
+        "490  BC",
+        "490   BC",
+    ])
+    def test_whitespace_between_year_and_era(self, text):
         """Test parsing with various whitespace between year and era."""
-        test_cases = [
-            "490 BC",
-            "490  BC",
-            "490   BC",
-        ]
-        for text in test_cases:
-            result = self.parser.parse(text, 490, True)
-            assert result is not None, f"Failed to parse: {text}"
+        result = self.parser.parse(text, 490, True)
+        assert result is not None, f"Failed to parse: {text}"
     
-    def test_leading_whitespace_allowed(self):
+    @pytest.mark.parametrize("text", [
+        " 490 BC",
+        "  490 BC",
+        "   490 BC",
+    ])
+    def test_leading_whitespace_allowed(self, text):
         """Test that leading whitespace is allowed."""
-        test_cases = [
-            " 490 BC",
-            "  490 BC",
-            "   490 BC",
-        ]
-        for text in test_cases:
-            result = self.parser.parse(text, 490, True)
-            assert result is not None, f"Failed to parse: {text}"
+        result = self.parser.parse(text, 490, True)
+        assert result is not None, f"Failed to parse: {text}"
     
     def test_text_after_year_era(self):
         """Test parsing with text after the year and era."""

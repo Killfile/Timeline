@@ -37,6 +37,11 @@ These instructions apply to all Copilot-generated code and edits in this repo.
   - Avoid cleverness.
   - Prefer explicit error handling with actionable messages.
 - Don’t mix formatting-only changes into functional changes.
+- Keep functions and classes small; prefer composition over inheritance.
+- Avoid deep nesting; use early returns to simplify control flow.
+- Variable name length should be proportional to scope; longer names for wider scopes.
+    - Exception: In test code, prefer longer and more descriptive names for clarity.
+- Function name lengths should be inversely proportional to their scope: shorter names for widely used functions, longer names for narrow-scope functions.
 
 ## Testing expectations (required)
 

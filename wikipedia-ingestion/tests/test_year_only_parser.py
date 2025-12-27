@@ -12,86 +12,72 @@ class TestYearOnlyParser:
         """Set up test fixtures."""
         self.parser = YearOnlyParser()
     
-    def test_valid_bc_year(self):
-        """Test parsing a valid BC year using page context."""
-        result = self.parser.parse("490", 490, True)
+    @pytest.mark.parametrize("text,page_year,page_bc,expected_year,expected_bc", [
+        ("490", 490, True, 490, True),
+        ("2020", 2020, False, 2020, False),
+    ])
+    def test_valid_years(self, text, page_year, page_bc, expected_year, expected_bc):
+        """Test parsing valid years with page context."""
+        result = self.parser.parse(text, page_year, page_bc)
         assert result is not None
-        assert result.start_year == 490
-        assert result.end_year == 490
-        assert result.is_bc is True
+        assert result.start_year == expected_year
+        assert result.end_year == expected_year
+        assert result.is_bc is expected_bc
         assert result.precision == "year"
         assert result.start_month == 1
         assert result.start_day == 1
         assert result.end_month == 12
         assert result.end_day == 31
     
-    def test_valid_ad_year(self):
-        """Test parsing a valid AD year using page context."""
-        result = self.parser.parse("2020", 2020, False)
+    @pytest.mark.parametrize("text,page_year", [
+        ("490", 490),
+        ("2020", 2020),
+    ])
+    def test_valid_digit_counts(self, text, page_year):
+        """Test parsing with three and four-digit years."""
+        result = self.parser.parse(text, page_year, True)
         assert result is not None
-        assert result.start_year == 2020
-        assert result.end_year == 2020
-        assert result.is_bc is False
+        assert result.start_year == page_year
     
-    def test_three_digit_year(self):
-        """Test parsing with three-digit year."""
-        result = self.parser.parse("490", 490, True)
-        assert result is not None
-        assert result.start_year == 490
-    
-    def test_four_digit_year(self):
-        """Test parsing with four-digit year."""
-        result = self.parser.parse("2020", 2020, False)
-        assert result is not None
-        assert result.start_year == 2020
-    
-    def test_two_digit_year_not_matched(self):
-        """Test that two-digit years are not matched."""
-        result = self.parser.parse("45", 45, True)
-        assert result is None  # Requires 3-4 digits
-    
-    def test_one_digit_year_not_matched(self):
-        """Test that one-digit years are not matched."""
-        result = self.parser.parse("5", 5, True)
-        assert result is None  # Requires 3-4 digits
-    
-    def test_five_digit_year_not_matched(self):
-        """Test that five-digit years are not matched."""
-        result = self.parser.parse("10000", 10000, False)
-        assert result is None  # Only 3-4 digits allowed
+    @pytest.mark.parametrize("text,page_year,reason", [
+        ("45", 45, "two digits"),
+        ("5", 5, "one digit"),
+        ("10000", 10000, "five digits"),
+    ])
+    def test_invalid_digit_counts_not_matched(self, text, page_year, reason):
+        """Test that years with invalid digit counts are not matched."""
+        result = self.parser.parse(text, page_year, True)
+        assert result is None, f"Should not match {reason}"
     
     def test_year_zero_invalid(self):
         """Test that year 0 is rejected."""
         result = self.parser.parse("0000", 1, False)
-        # Parser will accept 0, validation should reject it
         assert result is None
     
-    def test_page_bc_determines_era(self):
+    @pytest.mark.parametrize("page_bc,expected_is_bc", [
+        (True, True),
+        (False, False),
+    ])
+    def test_page_bc_determines_era(self, page_bc, expected_is_bc):
         """Test that page_bc parameter determines BC vs AD."""
-        result_bc = self.parser.parse("490", 490, True)
-        assert result_bc is not None
-        assert result_bc.is_bc is True
-        
-        result_ad = self.parser.parse("490", 490, False)
-        assert result_ad is not None
-        assert result_ad.is_bc is False
+        result = self.parser.parse("490", 490, page_bc)
+        assert result is not None
+        assert result.is_bc is expected_is_bc
     
     def test_must_be_at_start_of_string(self):
         """Test that year must be at start of string."""
         result = self.parser.parse("In 490", 490, True)
-        # This should NOT match because regex allows leading whitespace but not other prefixes
         assert result is None
     
-    def test_leading_whitespace_allowed(self):
+    @pytest.mark.parametrize("text", [
+        " 490",
+        "  490",
+        "   490",
+    ])
+    def test_leading_whitespace_allowed(self, text):
         """Test that leading whitespace is allowed."""
-        test_cases = [
-            " 490",
-            "  490",
-            "   490",
-        ]
-        for text in test_cases:
-            result = self.parser.parse(text, 490, True)
-            assert result is not None, f"Failed to parse: {text}"
+        result = self.parser.parse(text, 490, True)
+        assert result is not None, f"Failed to parse: {text}"
     
     def test_text_after_year(self):
         """Test parsing with text after the year."""
