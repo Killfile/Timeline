@@ -639,8 +639,13 @@ def ingest_wikipedia_list_of_years(conn) -> None:
 
             bullet_span = None if is_circa else SpanParser.parse_span_from_bullet(bullet_text, scope["start_year"], assume_is_bc=page_assume_is_bc)
             
+            # Initialize all date components to None/defaults to prevent leaking from previous iterations
             effective_start_year = scope["start_year"]
+            effective_start_month = None
+            effective_start_day = None
             effective_end_year = scope["end_year"]
+            effective_end_month = None
+            effective_end_day = None
             effective_is_bc = bool(page_assume_is_bc) if page_assume_is_bc is not None else scope_is_bc
             precision = scope["precision"]
             span_match_notes = ""
