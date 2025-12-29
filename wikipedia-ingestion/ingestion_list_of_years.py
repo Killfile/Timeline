@@ -308,7 +308,7 @@ def _get_tag_and_month_from_h3_context(h3_text: str | None) -> tuple[str | None,
 
     norm = _DASH_RE.sub("-", raw.lower())
 
-    if norm in {"unknown dates", "date unknown", "unknown date", "unknown"}:
+    if norm in {"unknown dates", "date unknown", "unknown date", "unknown", "year unknown"}:
         return None, raw
 
     months_pattern = r"(?:" + "|".join(_MONTHS) + r")"
@@ -345,6 +345,7 @@ def _is_heading_generic(h3_text: str | None) -> bool:
         "by place/topic",
         "by place/topic/subject",
         "by topic/subject",
+        "year unknown",
     }
 
 
@@ -453,14 +454,111 @@ def _extract_events_section_items(html: str) -> list[dict]:
     return items
 
 
-def _discover_yearish_links_from_list_of_years(html: str, *, limit: int | None = 200) -> list[dict]:
+def _parse_year(year_str: str | None) -> dict | None:
+    """
+    Parse a year string in format '#### AD/BC' (e.g., '150 BC', '1962 AD', '1962').
+    Returns dict with {year: int, is_bc: bool} or None if invalid/not specified.
+    """
+    if not year_str:
+        return None
+    
+    year_str = year_str.strip()
+    if not year_str:
+        return None
+    
+    # Match patterns like "150 BC", "1962 AD", "1962", "150 BCE", "1962 CE"
+    pattern = r"^(\d{1,4})\s*(AD|BC|BCE|CE)?$"
+    match = re.match(pattern, year_str, re.IGNORECASE)
+    
+    if not match:
+        return None
+    
+    year = int(match.group(1))
+    era = match.group(2)
+    
+    # Determine if BC/BCE (default to AD if no era specified)
+    is_bc = bool(era and era.upper() in {"BC", "BCE"})
+    
+    return {"year": year, "is_bc": is_bc}
+
+
+def _should_include_page(page_year: int, page_is_bc: bool, min_year: dict | None, max_year: dict | None) -> bool:
+    """
+    Determine if a page should be included based on min/max year thresholds.
+    
+    "Ingest from X to Y" means start at X chronologically and stop when we encounter a year AFTER Y:
+    - min='100 BC', max='150 BC': Include 200 BC? No. 100 BC? Yes. 99 BC? Yes. 50 BC? Yes. 150 BC? Yes. 149 BC? No.
+    - min='100 BC', max='50 AD': Include all from 100 BC through 1 BC, then 1 AD through 50 AD
+    - min='10 AD', max='50 AD': Skip all BC, start at 1 AD? No. 10 AD? Yes. 11 AD? Yes. 50 AD? Yes. 51 AD? No.
+    
+    BC years: 200 BC comes BEFORE 100 BC chronologically (higher numbers = earlier in time).
+    """
+    # Check minimum year (earliest to start ingesting)
+    if min_year is not None:
+        min_year_num = min_year["year"]
+        min_is_bc = min_year["is_bc"]
+        
+        if page_is_bc and min_is_bc:
+            # Both BC: page must be <= min_year (closer to present)
+            # 100 BC min: include 100, 99, 98... exclude 101, 102...
+            if page_year > min_year_num:
+                return False
+        elif not page_is_bc and not min_is_bc:
+            # Both AD: page must be >= min_year
+            if page_year < min_year_num:
+                return False
+        elif page_is_bc and not min_is_bc:
+            # Page is BC but min is AD: exclude all BC pages (AD comes after BC)
+            return False
+        # else: page is AD and min is BC: include (AD comes after BC)
+    
+    # Check maximum year (latest to stop ingesting)
+    if max_year is not None:
+        max_year_num = max_year["year"]
+        max_is_bc = max_year["is_bc"]
+        
+        if page_is_bc and max_is_bc:
+            # Both BC: Higher BC numbers are EARLIER in time (200 BC comes before 100 BC)
+            # Include if page year >= max year (page comes before or at the cutoff)
+            if page_year < max_year_num:
+                return False
+        elif not page_is_bc and not max_is_bc:
+            # Both AD: include if page year <= max year
+            if page_year > max_year_num:
+                return False
+        elif page_is_bc and not max_is_bc:
+            # Page is BC, max is AD: include all BC pages (all BC comes before any AD)
+            pass
+        else:
+            # Page is AD, max is BC: exclude all AD pages
+            return False
+    
+    return True
+
+
+def _discover_yearish_links_from_list_of_years(html: str, *, limit: int | None = 200, min_year: dict | None = None, max_year: dict | None = None) -> list[dict]:
+    """
+    Discover year page links from Wikipedia's List of years.
+    
+    Args:
+        html: HTML content of the List of years page
+        limit: Optional limit on number of candidates to discover
+        min_year: Optional min year dict to determine earliest year to discover
+        max_year: Optional max year dict to determine if AD pages should be discovered
+    """
     soup = BeautifulSoup(html, "lxml")
     candidates: list[dict] = []
     seen_urls: set[str] = set()
 
     bc_re = re.compile(r"^/wiki/(\d{1,4})_BC$")
     ad_re = re.compile(r"^/wiki/AD_(\d{1,4})$")
-    include_ad = os.getenv("WIKI_LIST_OF_YEARS_INCLUDE_AD", "").strip().lower() in {"1", "true", "yes"}
+    
+    # Discover AD pages if:
+    # - No max_year specified (default to discovering all)
+    # - max_year is AD
+    # - min_year is AD (need to discover AD even if max is BC)
+    include_ad = (max_year is None or not max_year.get("is_bc", False) or 
+                  (min_year is not None and not min_year.get("is_bc", False)))
 
     for a in soup.select('a[href^="/wiki/"]'):
         href = a.get("href") or ""
@@ -535,18 +633,30 @@ def ingest_wikipedia_list_of_years(conn) -> None:
         _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)
         return
 
-    raw_limit = os.getenv("WIKI_LIST_OF_YEARS_PAGE_LIMIT")
-    page_limit = int(raw_limit) if raw_limit else 1000
+    # Parse min/max year configuration (e.g., "150 BC", "1962 AD", "1962")
+    min_year_str = os.getenv("WIKI_MIN_YEAR")
+    max_year_str = os.getenv("WIKI_MAX_YEAR")
+    min_year = _parse_year(min_year_str)
+    max_year = _parse_year(max_year_str)
+    
+    # Discover year pages (pass min/max to control AD discovery)
+    pages = _discover_yearish_links_from_list_of_years(index_html, limit=None, min_year=min_year, max_year=max_year)
+    
+    # Filter pages based on min/max year thresholds
+    if min_year or max_year:
+        pages = [
+            p for p in pages
+            if _should_include_page(
+                p.get("scope", {}).get("start_year", 0),
+                p.get("scope", {}).get("is_bc", False),
+                min_year,
+                max_year
+            )
+        ]
 
-    bc_only = os.getenv("WIKI_LIST_OF_YEARS_BC_ONLY", "").strip().lower() in {"1", "true", "yes"}
-    if bc_only and not raw_limit:
-        page_limit = None
-
-    pages = _discover_yearish_links_from_list_of_years(index_html, limit=page_limit)
-    if bc_only:
-        pages = [p for p in pages if bool(p.get("scope", {}).get("is_bc", False))]
-
-    log_info(f"Discovered {len(pages)} year/decade pages (limit={page_limit}, env={raw_limit!r}, bc_only={bc_only})")
+    min_desc = f"from {min_year_str}" if min_year_str else "from earliest"
+    max_desc = f"to {max_year_str}" if max_year_str else "to latest"
+    log_info(f"Discovered {len(pages)} year/decade pages ({min_desc} {max_desc})")
     log_info(f"Full pages list: {pages}")
 
     total_inserted = 0

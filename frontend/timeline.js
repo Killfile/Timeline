@@ -2,7 +2,7 @@
 const API_URL = window.location.protocol + '//' + window.location.hostname + ':8000';
 
 // Viewport-based loading config
-const MAX_VISIBLE_EVENTS = 200;  // Tunable: how many highest-weight events to show at once
+const MAX_VISIBLE_EVENTS = 100;  // Tunable: how many highest-weight events to show at once
 
 // Extract the first sentence for compact UI labels.
 // Remove date prefixes and limit to 30 characters.
@@ -231,8 +231,9 @@ async function loadEventsInViewport(category = null) {
         // Diff and incrementally add/remove markers.
         updateTimelineMarkers(newEvents);
         
-        // Ensure legend is updated (it's called in updateTimelineMarkers, but make sure)
-        console.log('[Viewport] Timeline markers updated, legend should be rendered');
+        // Explicitly render legend to ensure it updates
+        renderLegend();
+        console.log('[Viewport] Timeline markers and legend updated');
     } catch (error) {
         console.error('Error loading viewport events:', error);
     }
@@ -316,8 +317,8 @@ function updateTimelineMarkers(newEvents) {
     }
 
     function getNumericSpan(d) {
-        const s = toYearNumber(d.start_year, d.is_bc_start);
-        const e = hasSpan(d) ? toYearNumber(d.end_year, d.is_bc_end) : s;
+        const s = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+        const e = hasSpan(d) ? toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day) : s;
         if (s === null || e === null) return null;
         return {
             start: Math.min(s, e),
@@ -761,6 +762,14 @@ function initializeTimeline() {
 
     // Legend is rendered into a separate HTML element (#timeline-legend)
     // so it does not scale/translate with zoom/pan.
+    // Initialize with loading state
+    const legendEl = document.getElementById('timeline-legend');
+    if (legendEl) {
+        legendEl.innerHTML = '<div class="legend-empty">Loading events...</div>';
+        console.log('[initializeTimeline] Legend element initialized');
+    } else {
+        console.error('[initializeTimeline] Legend element #timeline-legend not found in DOM');
+    }
 }
 
 function clamp(val, lo, hi) {
@@ -820,7 +829,7 @@ function getOpacityForEventInViewport(d, viewSpanYears) {
     // Moments are treated as tiny fractions.
 
     const minOpacity = 0.12;
-    const maxOpacity = 0.9;
+    const maxOpacity = 1.0;  // Allow full opacity for events that fill the viewport
 
     const eventSpan = getEventSpanYears(d);
     // Treat moments as a tiny non-zero fraction so they remain visible.
@@ -922,8 +931,8 @@ function renderTimeline() {
     }
 
     function getNumericSpan(d) {
-        const s = toYearNumber(d.start_year, d.is_bc_start);
-        const e = hasSpan(d) ? toYearNumber(d.end_year, d.is_bc_end) : s;
+        const s = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+        const e = hasSpan(d) ? toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day) : s;
         if (s === null || e === null) return null;
         return {
             start: Math.min(s, e),
@@ -1179,9 +1188,10 @@ function renderTimeline() {
 }
 
 function renderLegend() {
+    console.log('[renderLegend] Starting legend render');
     const legendEl = document.getElementById('timeline-legend');
     if (!legendEl) {
-        console.warn('[renderLegend] Legend element not found');
+        console.error('[renderLegend] Legend element #timeline-legend not found in DOM');
         return;
     }
 
@@ -1208,6 +1218,7 @@ function renderLegend() {
     if (items.length === 0) {
         console.warn('[renderLegend] No categories to display');
         legendEl.innerHTML = '<div class="legend-empty">No events in view</div>';
+        legendEl.style.display = 'block';  // Ensure it's visible even when empty
         return;
     }
 
@@ -1236,6 +1247,8 @@ function renderLegend() {
         .join('');
 
     legendEl.innerHTML = `${shapeKeyHtml}<div class="legend-grid">${rowsHtml}</div>`;
+    legendEl.style.display = 'block';  // Ensure it's visible
+    console.log('[renderLegend] Legend HTML updated successfully with', items.length, 'categories');
 }
 
 // Zoom handler
@@ -1321,8 +1334,8 @@ function zoomed(event) {
     const sublaneById = new Map();
 
     function getNumericSpan(d) {
-        const s = toYearNumber(d.start_year, d.is_bc_start);
-        const e = hasSpan(d) ? toYearNumber(d.end_year, d.is_bc_end) : s;
+        const s = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+        const e = hasSpan(d) ? toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day) : s;
         if (s === null || e === null) return null;
         return { start: Math.min(s, e), end: Math.max(s, e) };
     }

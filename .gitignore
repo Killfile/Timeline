@@ -34,3 +34,5 @@ data/
 *.log
 logs/
 wikipedia-ingestion/REFACTORING_SUMMARY.md
+wikipedia-ingestion/future_revisions.md
+frontend/future_revisions.md

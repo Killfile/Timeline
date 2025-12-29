@@ -53,8 +53,8 @@ services:
       DB_USER: ${POSTGRES_USER:-timeline_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
       # Optional ingestion tuning
-      WIKI_LIST_OF_YEARS_BC_ONLY: ${WIKI_LIST_OF_YEARS_BC_ONLY:-}
-      WIKI_LIST_OF_YEARS_PAGE_LIMIT: ${WIKI_LIST_OF_YEARS_PAGE_LIMIT:-}
+      WIKI_MIN_YEAR: ${WIKI_MIN_YEAR:-}  # e.g., "100 BC", "10 AD" - earliest year to ingest
+      WIKI_MAX_YEAR: ${WIKI_MAX_YEAR:-}  # e.g., "150 BC", "1962 AD", "1962" - latest year to ingest
     depends_on:
       database:
         condition: service_healthy

@@ -130,6 +130,56 @@ The Postgres server runs on the Docker Compose network, so from pgAdmin the host
 
 Note: pgAdmin is preconfigured with a server entry named **"Timeline Postgres"** via `pgadmin/servers.json`. If you don't see it, restart the pgAdmin service (`docker compose restart pgadmin`).
 
+## Configuration
+
+### Wikipedia Ingestion Tuning
+
+You can control which Wikipedia year pages are ingested using environment variables in your `.env` file or `docker-compose.yml`:
+
+#### `WIKI_MIN_YEAR`
+Specifies the earliest year to start ingesting. Format: `"#### AD/BC"` or `"#### BCE/CE"` (AD/CE is default if era not specified).
+
+**Examples:**
+- `WIKI_MIN_YEAR="100 BC"` - Start at 100 BC, then 99 BC, 98 BC, ... (skips earlier years like 200 BC, 150 BC, 101 BC)
+- `WIKI_MIN_YEAR="10 AD"` or `WIKI_MIN_YEAR="10"` - Start at 10 AD, skipping all BC years and 1-9 AD
+- Not set - Start from the earliest available year (~1000 BC)
+
+#### `WIKI_MAX_YEAR`
+Specifies the latest year to stop ingesting. Format: `"#### AD/BC"` or `"#### BCE/CE"` (AD/CE is default if era not specified).
+
+**Examples:**
+- `WIKI_MAX_YEAR="150 BC"` - Ingest through 150 BC, then stop (excludes 149 BC, 100 BC, 1 BC, and all AD years which come after 150 BC)
+- `WIKI_MAX_YEAR="1962 AD"` or `WIKI_MAX_YEAR="1962"` - Ingest through 1962 AD, stopping before 1963 AD
+- Not set - Ingest through the latest available year
+
+#### Combined Usage
+You can use both parameters to define a specific range:
+- `WIKI_MIN_YEAR="100 BC"` and `WIKI_MAX_YEAR="50 BC"` - Ingest only 100 BC through 50 BC
+- `WIKI_MIN_YEAR="10 AD"` and `WIKI_MAX_YEAR="50 AD"` - Ingest only 10 AD through 50 AD
+- `WIKI_MIN_YEAR="50 BC"` and `WIKI_MAX_YEAR="50 AD"` - Ingest from 50 BC through 50 AD (crossing the BC/AD boundary)
+
+**Note:** BC years count backwards chronologically - 200 BC comes BEFORE 100 BC in time (higher BC numbers = earlier in history).
+
+**Usage in `.env` file:**
+```bash
+WIKI_MIN_YEAR=100 BC
+WIKI_MAX_YEAR=50 AD
+```
+
+**Usage in `docker-compose.yml`:**
+```yaml
+wikipedia-ingestion:
+  environment:
+    WIKI_MIN_YEAR: "100 BC"
+    WIKI_MAX_YEAR: "50 AD"
+```
+
+After changing these settings, restart the ingestion service and re-run ingestion:
+```bash
+docker compose restart wikipedia-ingestion
+docker compose run --rm wikipedia-ingestion python ingest_wikipedia.py
+```
+
 ## Development
 
 ### View logs for all services:

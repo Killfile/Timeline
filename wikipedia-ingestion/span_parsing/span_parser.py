@@ -49,6 +49,7 @@ class SpanParser:
             SpanParsers.YEAR_RANGE,
             SpanParsers.YEAR_WITH_EXPLICIT_ERA,
             SpanParsers.YEAR_ONLY,
+            SpanParsers.FALLBACK,
         ]
 
         for step in parser_steps:
