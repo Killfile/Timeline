@@ -472,6 +472,20 @@ function updateTimelineMarkers(newEvents) {
 
     function getEndX(d, scale) {
         if (!hasSpan(d)) return null;
+        
+        // Check if this is a single-day event (same year, month, and day)
+        const isSingleDay = d.start_year === d.end_year &&
+                           d.start_month === d.end_month &&
+                           d.start_day === d.end_day &&
+                           d.start_day !== null && d.start_day !== undefined;
+        
+        if (isSingleDay) {
+            // For single-day events, add 1 day to make them span the full day
+            const startN = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            if (startN === null) return null;
+            return scale(startN + (1 / 365.0)); // Add 1 day
+        }
+        
         const n = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
         return n === null ? null : scale(n);
     }
@@ -811,14 +825,55 @@ function getViewportSpanYears(scale) {
 }
 
 function getEventSpanYears(d) {
-    // Anything without an end_year is treated as a moment (~0).
+    // Calculate the span considering year, month, and day precision
     if (d.start_year === null || d.start_year === undefined) return 0;
-    const s = d.is_bc_start ? -d.start_year : d.start_year;
-    const eRaw = (d.end_year === null || d.end_year === undefined)
-        ? s
-        : (d.is_bc_end ? -d.end_year : d.end_year);
-    const e = eRaw;
-    return Math.max(0, Math.abs(e - s));
+    
+    // Helper to convert year/month/day to fractional year number
+    const toFractionalYear = (year, isBc, month, day) => {
+        let fractionalYear = isBc ? -year : year;
+        
+        if (month !== null && month !== undefined) {
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            let dayOfYear = 0;
+            for (let i = 0; i < month - 1; i++) {
+                dayOfYear += daysInMonth[i];
+            }
+            if (day !== null && day !== undefined) {
+                dayOfYear += day;
+            } else {
+                dayOfYear += Math.floor(daysInMonth[month - 1] / 2);
+            }
+            const yearFraction = dayOfYear / 365.0;
+            fractionalYear += yearFraction;
+        }
+        
+        return fractionalYear;
+    };
+    
+    const startFractional = toFractionalYear(
+        d.start_year, 
+        d.is_bc_start, 
+        d.start_month, 
+        d.start_day
+    );
+    
+    const endFractional = (d.end_year === null || d.end_year === undefined)
+        ? startFractional
+        : toFractionalYear(d.end_year, d.is_bc_end, d.end_month, d.end_day);
+    
+    const spanYears = Math.max(0, Math.abs(endFractional - startFractional));
+    
+    // Special case: single-day events (same year, month, and day) should span 1 day
+    if (spanYears === 0 && 
+        d.start_day !== null && d.start_day !== undefined &&
+        d.end_day !== null && d.end_day !== undefined &&
+        d.start_year === d.end_year &&
+        d.start_month === d.end_month &&
+        d.start_day === d.end_day) {
+        return 1 / 365.0;  // 1 day = 1/365 years
+    }
+    
+    return spanYears;
 }
 
 function getOpacityForEventInViewport(d, viewSpanYears) {
@@ -1079,6 +1134,20 @@ function renderTimeline() {
 
     function getEndX(d, scale) {
         if (!hasSpan(d)) return null;
+        
+        // Check if this is a single-day event (same year, month, and day)
+        const isSingleDay = d.start_year === d.end_year &&
+                           d.start_month === d.end_month &&
+                           d.start_day === d.end_day &&
+                           d.start_day !== null && d.start_day !== undefined;
+        
+        if (isSingleDay) {
+            // For single-day events, add 1 day to make them span the full day
+            const startN = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            if (startN === null) return null;
+            return scale(startN + (1 / 365.0)); // Add 1 day
+        }
+        
         const n = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
         return n === null ? null : scale(n);
     }
@@ -1325,6 +1394,20 @@ function zoomed(event) {
 
     function getEndX(d, scale) {
         if (!hasSpan(d)) return null;
+        
+        // Check if this is a single-day event (same year, month, and day)
+        const isSingleDay = d.start_year === d.end_year &&
+                           d.start_month === d.end_month &&
+                           d.start_day === d.end_day &&
+                           d.start_day !== null && d.start_day !== undefined;
+        
+        if (isSingleDay) {
+            // For single-day events, add 1 day to make them span the full day
+            const startN = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            if (startN === null) return null;
+            return scale(startN + (1 / 365.0)); // Add 1 day
+        }
+        
         const n = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
         return n === null ? null : scale(n);
     }
