@@ -15,6 +15,7 @@ class SpanParsers(Enum):
     YEAR_WITH_EXPLICIT_ERA = auto()
     YEAR_ONLY = auto()
     FALLBACK = auto()
+    CIRCA_YEAR = auto()
 
 
 class SpanParserFactory:
@@ -43,6 +44,7 @@ class SpanParserFactory:
         from span_parsing.year_with_era_parser import YearWithEraParser
         from span_parsing.year_only_parser import YearOnlyParser
         from span_parsing.fallback_parser import FallbackSpanParser
+        from span_parsing.circa_year_parser import CircaYearParser
         
         if strategy == SpanParsers.MONTH_AND_DAY_RANGE_WITHIN_PAGE_SPAN_ACROSS_YEARS:
             return MultiYearMonthAndDayRangeParser()
@@ -62,5 +64,7 @@ class SpanParserFactory:
             return YearOnlyParser()
         elif strategy == SpanParsers.FALLBACK:
             return FallbackSpanParser()
+        elif strategy == SpanParsers.CIRCA_YEAR:
+            return CircaYearParser()
         else:
             raise ValueError(f"Unknown strategy: {strategy}")

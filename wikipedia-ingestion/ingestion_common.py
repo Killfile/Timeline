@@ -293,40 +293,15 @@ def _get_html(url: str, *, timeout: int = 30, context: str = "") -> tuple[tuple[
 
 
 def insert_event(conn, event: dict, category: str | None):
-    """Insert an event into the database."""
+    """Insert an event into the database.
+    
+    The event dict should include a 'weight' field with the pre-computed weight in days.
+    If weight is not provided or is None, the event will be inserted without a weight.
+    """
     _require_psycopg2()
     title = (event.get("title") or "").strip()
     if not title or len(title) < 3:
         return False
-
-    def _compute_weight_days(e: dict) -> int | None:
-        """Approximate event span length in days.
-
-        Contract:
-        - Uses year-level granularity only (no months/days yet).
-        - 1 year => 365 days.
-        - If start/end missing or invalid, returns None.
-        """
-        try:
-            s = e.get("start_year")
-            end = e.get("end_year")
-            if s is None or end is None:
-                return None
-            s_i = int(s)
-            e_i = int(end)
-            # Some ingestion paths store year-as-exclusive-end (e.g. scope year => end = start+1).
-            # In that model, end-start is already "span in years".
-            span_years = abs(e_i - s_i)
-            # Treat single-year point spans (end==start) as 1 year.
-            if span_years == 0:
-                span_years = 1
-            return int(span_years) * 365
-        except Exception:
-            return None
-
-    # Ensure weight is present; allow caller override.
-    if event.get("weight") is None:
-        event["weight"] = _compute_weight_days(event)
 
     try:
         conn.rollback()

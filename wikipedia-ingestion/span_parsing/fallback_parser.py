@@ -30,3 +30,6 @@ class FallbackSpanParser(SpanParserStrategy):
             match_type="Fallback parser using page context"
         )
         return self._return_none_if_invalid(span)
+
+    def compute_weight_days(self, span: Span) -> int | None:
+        return 1 # Fallback span has a weight of 1 day since we are just guessing

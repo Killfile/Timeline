@@ -31,11 +31,6 @@ class SpanParser:
             return None
         t = text.strip()
 
-        # Skip circa dates
-        lead = re.sub(r"^\s+", "", t)
-        if re.match(r"^(c\s*\.|ca\s*\.|circa)(\s|$)", lead, flags=re.IGNORECASE):
-            return None
-
         # Normalize dash characters
         text_to_parse = SpanParser._DASH_RE.sub("-", t)
 
@@ -49,13 +44,18 @@ class SpanParser:
             SpanParsers.YEAR_RANGE,
             SpanParsers.YEAR_WITH_EXPLICIT_ERA,
             SpanParsers.YEAR_ONLY,
+            SpanParsers.CIRCA_YEAR,
             SpanParsers.FALLBACK,
+            
         ]
 
         for step in parser_steps:
             parser = SpanParserFactory.get_parser(step)
             return_value = parser.parse(text_to_parse, span_year, bool(assume_is_bc))
             if return_value is not None:
+                # Compute and set weight for the span
+                if return_value.weight is None:
+                    return_value.weight = parser.compute_weight_days(return_value)
                 return return_value
 
         return None

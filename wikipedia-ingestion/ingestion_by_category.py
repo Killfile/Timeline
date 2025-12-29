@@ -100,6 +100,20 @@ def extract_event_details(pageid: int) -> dict | None:
                 flush=True,
             )
 
+            # Compute weight (span length in days)
+            weight = None
+            if best.start_year is not None:
+                if best.end_year is None:
+                    weight = 365  # Single year
+                else:
+                    try:
+                        span_years = abs(int(best.end_year) - int(best.start_year))
+                        if span_years == 0:
+                            span_years = 1
+                        weight = int(span_years) * 365
+                    except Exception:
+                        weight = None
+
             return {
                 "description": extract[:500] if extract else None,
                 "url": url,
@@ -107,16 +121,13 @@ def extract_event_details(pageid: int) -> dict | None:
                 "end_year": best.end_year,
                 "is_bc_start": best.is_bc_start,
                 "is_bc_end": best.is_bc_end,
+                "weight": weight,
                 "_debug_extraction": {
                     "method": best.method,
                     "matches": best.matches,
                     "snippet": best.snippet,
                     "confidence": best.confidence,
-                    "weight_days": (
-                        None
-                        if best.start_year is None
-                        else (365 if best.end_year is None else max(1, abs(int(best.end_year) - int(best.start_year))) * 365)
-                    ),
+                    "weight_days": weight,
                     "all_results": [
                         {
                             "method": r.method,

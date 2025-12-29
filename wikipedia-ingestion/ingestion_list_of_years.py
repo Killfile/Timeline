@@ -615,23 +615,21 @@ def _infer_page_era_from_html(html: str, *, scope_is_bc: bool | None) -> bool | 
 
 
 
-def ingest_wikipedia_list_of_years(conn) -> None:
-    """Main entry point for ingesting events from Wikipedia's List of years.
+def _discover_and_filter_pages() -> tuple[list[dict], dict[str, int], dict[str, list[dict]]]:
+    """Discover and filter year pages based on min/max year configuration.
     
-    Args:
-        conn: Database connection for inserting events
+    Returns:
+        tuple of (filtered_pages, exclusions_agg_counts, exclusions_agg_samples)
     """
-    log_info("Starting Wikipedia list-of-years ingestion...")
-
     exclusions_agg_counts: dict[str, int] = {}
     exclusions_agg_samples: dict[str, list[dict]] = {}
 
+    # Load the List of years index page
     (index_pair, index_err) = _get_html(LIST_OF_YEARS_URL, context="list_of_years")
     index_html, _index_url = index_pair
     if index_err or not index_html.strip():
         log_error(f"Failed to load List_of_years page: {index_err}")
-        _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)
-        return
+        return [], exclusions_agg_counts, exclusions_agg_samples
 
     # Parse min/max year configuration (e.g., "150 BC", "1962 AD", "1962")
     min_year_str = os.getenv("WIKI_MIN_YEAR")
@@ -659,169 +657,301 @@ def ingest_wikipedia_list_of_years(conn) -> None:
     log_info(f"Discovered {len(pages)} year/decade pages ({min_desc} {max_desc})")
     log_info(f"Full pages list: {pages}")
 
+    return pages, exclusions_agg_counts, exclusions_agg_samples
+
+
+def _process_event_item(
+    item: dict,
+    scope: dict,
+    scope_is_bc: bool,
+    page_assume_is_bc: bool | None,
+    canonical_url: str,
+    pageid: int | None,
+    title: str
+) -> dict | None:
+    """Process a single event item and return an event dict ready for insertion.
+    
+    Args:
+        item: Extracted event item with text and context
+        scope: Page scope (start_year, end_year, precision, is_bc)
+        scope_is_bc: Whether the scope is BC
+        page_assume_is_bc: Inferred BC/AD era from page HTML
+        canonical_url: Canonical Wikipedia URL
+        pageid: Wikipedia page ID
+        title: Page title
+        
+    Returns:
+        Event dict ready for insert_event(), or None if item should be skipped
+    """
+    b = item["text"]
+    tag = (item.get("tag") or "").strip() or None
+    month_bucket = (item.get("month_bucket") or "").strip() or None
+
+    bullet_text = (b or "").strip()
+    #is_circa = bool(re.match(r"^\s*(c\.|ca\.|circa)\b", bullet_text, flags=re.IGNORECASE))
+
+    bullet_span = SpanParser.parse_span_from_bullet(
+        bullet_text, scope["start_year"], assume_is_bc=page_assume_is_bc
+    )
+    
+    # Initialize all date components to None/defaults to prevent leaking from previous iterations
+    effective_start_year = scope["start_year"]
+    effective_start_month = None
+    effective_start_day = None
+    effective_end_year = scope["end_year"]
+    effective_end_month = None
+    effective_end_day = None
+    effective_is_bc = bool(page_assume_is_bc) if page_assume_is_bc is not None else scope_is_bc
+    precision = scope["precision"]
+    span_match_notes = ""
+
+    if bullet_span is not None:
+        precision = bullet_span.precision
+        effective_start_year = bullet_span.start_year
+        effective_start_month = bullet_span.start_month
+        effective_start_day = bullet_span.start_day
+        effective_end_year = bullet_span.end_year
+        effective_end_month = bullet_span.end_month
+        effective_end_day = bullet_span.end_day
+        effective_is_bc = bullet_span.is_bc
+        span_match_notes = bullet_span.match_type
+
+    category_value = tag or None
+
+    # Compute weight from bullet_span if available, otherwise compute from effective dates
+    weight = 0
+    if bullet_span is not None and hasattr(bullet_span, 'weight'):
+        weight = bullet_span.weight
+    
+
+    event = {
+        "title": b[:500],
+        "description": b[:500],
+        "url": canonical_url,
+        "start_year": effective_start_year,
+        "start_month": effective_start_month,
+        "start_day": effective_start_day,
+        "end_year": effective_end_year,
+        "end_month": effective_end_month,
+        "end_day": effective_end_day,
+        "is_bc_start": effective_is_bc,
+        "is_bc_end": effective_is_bc,
+        "weight": weight,
+        "pageid": pageid,
+        "category": category_value,
+        "_debug_extraction": {
+            "method": "list_of_years_events_and_trends",
+            "matches": [],
+            "snippet": b[:300],
+            "weight_days": weight,
+            "events_heading": item.get("events_heading"),
+            "h3_context": {"tag": tag, "month_bucket": month_bucket},
+            "scope": scope,
+            "bullet_span": bullet_span,
+            "source_page": {"title": title, "url": canonical_url},
+            "span_match_notes": span_match_notes,
+        },
+    }
+
+    return event
+
+
+@dataclass
+class ProcessedYearPage:
+    """Result of processing a single year page.
+    
+    Attributes:
+        extracted_items: List of event items extracted from the page
+        scope: Page scope dict (start_year, end_year, precision, is_bc)
+        canonical_url: Canonical Wikipedia URL for the page
+        pageid: Wikipedia page ID (or None if unavailable)
+        title: Page title
+        page_assume_is_bc: Inferred BC/AD era from page HTML
+        scope_is_bc: Whether the scope indicates BC
+    """
+    extracted_items: list[dict]
+    scope: dict
+    canonical_url: str
+    pageid: int | None
+    title: str
+    page_assume_is_bc: bool | None
+    scope_is_bc: bool
+
+
+def _process_year_page(
+    page: dict,
+    visited_page_keys: set[tuple],
+    exclusions_agg_counts: dict[str, int],
+    exclusions_agg_samples: dict[str, list[dict]]
+) -> ProcessedYearPage | None:
+    """Process a single year page and extract event items.
+    
+    Args:
+        page: Page info dict with title, url, scope
+        visited_page_keys: Set of already-visited page keys for deduplication
+        exclusions_agg_counts: Aggregate exclusion counts (updated in place)
+        exclusions_agg_samples: Aggregate exclusion samples (updated in place)
+        
+    Returns:
+        ProcessedYearPage with extracted data, or None if page should be skipped
+    """
+    title = page["title"]
+    url = page["url"]
+    scope = page["scope"]
+    scope_is_bc = bool(scope.get("is_bc", False))
+
+    log_info(
+        f"Processing page: {title} ({scope['precision']} {scope['start_year']}..{scope['end_year']}{' BC' if scope_is_bc else ''})"
+    )
+
+    # Load the page HTML
+    (page_pair, page_err) = _get_html(url, context=f"year_page={title}")
+    if page_err:
+        log_error(f"Failed to load year page {title}: {page_err}")
+        return None
+    html, redirected_url = page_pair
+    if not html.strip():
+        log_error(f"Loaded empty HTML for year page {title} (url={redirected_url})")
+        return None
+
+    # Extract title from HTML to refine scope
+    try:
+        soup = BeautifulSoup(html, "lxml")
+        h1_tag = soup.find("h1")
+        h1_text = h1_tag.get_text(" ", strip=True) if h1_tag else ""
+        title_tag = soup.find("title")
+        title_text = title_tag.get_text(" ", strip=True) if title_tag else ""
+    except Exception:
+        h1_text = ""
+        title_text = ""
+
+    actual_title = (h1_text or "").strip()
+    if not actual_title:
+        actual_title = re.split(r"\s+-\s+", (title_text or "").strip(), maxsplit=1)[0].strip()
+
+    # Recompute scope from actual page title if available
+    actual_scope = _parse_scope_from_title(actual_title) if actual_title else None
+    if actual_scope is not None:
+        if actual_scope != page["scope"]:
+            log_info(
+                f"Recomputed page scope from HTML title: discovered={page['scope']} actual_title={actual_title!r} actual_scope={actual_scope}"
+            )
+        scope = actual_scope
+        scope_is_bc = bool(scope.get("is_bc", False))
+
+    # Resolve page identity and check for duplicates
+    identity = _resolve_page_identity(redirected_url)
+    canonical_url = identity["canonical_url"] if identity else _canonicalize_wikipedia_url(redirected_url)
+    pageid = identity["pageid"] if identity else None
+
+    visited_key = ("pageid", pageid) if pageid is not None else ("url", canonical_url)
+    if visited_key in visited_page_keys:
+        log_info(f"Skipping duplicate page: {canonical_url}")
+        return None
+    visited_page_keys.add(visited_key)
+
+    # Extract events from the page
+    extracted_items, extraction_report = _extract_events_section_items_with_report(html)
+    if not extracted_items:
+        log_info("No Events bullets found (skipping)")
+        return None
+
+    # Merge extraction exclusions into aggregate tracking
+    _merge_exclusions(exclusions_agg_counts, exclusions_agg_samples, extraction_report)
+
+    # Log extraction exclusions for debugging
+    try:
+        excluded_counts = (extraction_report or {}).get("excluded_counts") or {}
+        excluded_samples = (extraction_report or {}).get("excluded_samples") or {}
+        if excluded_counts:
+            log_info(f"Extraction exclusions for {canonical_url}: counts={excluded_counts}")
+            for reason, samples in excluded_samples.items():
+                for s in samples[:3]:
+                    log_info(f"  excluded[{reason}] {s.get('text')!r} (h3={s.get('h3')!r})")
+    except Exception:
+        pass
+
+    time.sleep(0.3)
+
+    # Infer BC/AD era from page HTML
+    page_assume_is_bc = _infer_page_era_from_html(html, scope_is_bc=scope_is_bc)
+
+    return ProcessedYearPage(
+        extracted_items=extracted_items,
+        scope=scope,
+        canonical_url=canonical_url,
+        pageid=pageid,
+        title=title,
+        page_assume_is_bc=page_assume_is_bc,
+        scope_is_bc=scope_is_bc
+    )
+
+
+def ingest_wikipedia_list_of_years(conn) -> None:
+    """Main entry point for ingesting events from Wikipedia's List of years.
+    
+    This function orchestrates a pipeline:
+    1. Discover and filter year pages based on min/max year configuration
+    2. Process each page to extract event items
+    3. Process each event item to build event dicts
+    4. Insert events into the database with deduplication
+    
+    Args:
+        conn: Database connection for inserting events
+    """
+    log_info("Starting Wikipedia list-of-years ingestion...")
+
+    # Pipeline Stage 1: Discover and filter pages
+    pages, exclusions_agg_counts, exclusions_agg_samples = _discover_and_filter_pages()
+    if not pages:
+        _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)
+        return
+
+    # Initialize tracking state
     total_inserted = 0
     visited_page_keys: set[tuple] = set()
     seen_event_keys: set[tuple] = set()
-
     log_info("Visited-page set initialized (count=0)")
 
-    for p in pages:
-        title = p["title"]
-        url = p["url"]
-        scope = p["scope"]
-        scope_is_bc = bool(scope.get("is_bc", False))
-
-        log_info(
-            f"Processing page: {title} ({scope['precision']} {scope['start_year']}..{scope['end_year']}{' BC' if scope_is_bc else ''})"
-        )
-
-        (page_pair, page_err) = _get_html(url, context=f"year_page={title}")
-        if page_err:
-            log_error(f"Failed to load year page {title}: {page_err}")
-            continue
-        html, redirected_url = page_pair
-        if not html.strip():
-            log_error(f"Loaded empty HTML for year page {title} (url={redirected_url})")
+    # Pipeline Stage 2 & 3: Process pages and events
+    for page in pages:
+        # Process the year page
+        page_result = _process_year_page(page, visited_page_keys, exclusions_agg_counts, exclusions_agg_samples)
+        if page_result is None:
             continue
 
-        try:
-            soup = BeautifulSoup(html, "lxml")
-            h1_tag = soup.find("h1")
-            h1_text = h1_tag.get_text(" ", strip=True) if h1_tag else ""
-            title_tag = soup.find("title")
-            title_text = title_tag.get_text(" ", strip=True) if title_tag else ""
-        except Exception:
-            h1_text = ""
-            title_text = ""
+        # Process each event item from this page
+        for item in page_result.extracted_items:
+            # Build the event dict
+            event = _process_event_item(
+                item,
+                page_result.scope,
+                page_result.scope_is_bc,
+                page_result.page_assume_is_bc,
+                page_result.canonical_url,
+                page_result.pageid,
+                page_result.title
+            )
+            if event is None:
+                continue
 
-        actual_title = (h1_text or "").strip()
-        if not actual_title:
-            actual_title = re.split(r"\s+-\s+", (title_text or "").strip(), maxsplit=1)[0].strip()
-
-        actual_scope = _parse_scope_from_title(actual_title) if actual_title else None
-        if actual_scope is not None:
-            if actual_scope != p["scope"]:
-                log_info(
-                    f"Recomputed page scope from HTML title: discovered={p['scope']} actual_title={actual_title!r} actual_scope={actual_scope}"
-                )
-            scope = actual_scope
-            scope_is_bc = bool(scope.get("is_bc", False))
-
-        identity = _resolve_page_identity(redirected_url)
-        canonical_url = identity["canonical_url"] if identity else _canonicalize_wikipedia_url(redirected_url)
-        pageid = identity["pageid"] if identity else None
-
-        visited_key = ("pageid", pageid) if pageid is not None else ("url", canonical_url)
-        if visited_key in visited_page_keys:
-            continue
-        visited_page_keys.add(visited_key)
-
-        extracted_items, extraction_report = _extract_events_section_items_with_report(html)
-        if not extracted_items:
-            log_info("No Events bullets found (skipping)")
-            continue
-
-        _merge_exclusions(exclusions_agg_counts, exclusions_agg_samples, extraction_report)
-
-        try:
-            excluded_counts = (extraction_report or {}).get("excluded_counts") or {}
-            excluded_samples = (extraction_report or {}).get("excluded_samples") or {}
-            if excluded_counts:
-                log_info(f"Extraction exclusions for {canonical_url}: counts={excluded_counts}")
-                for reason, samples in excluded_samples.items():
-                    for s in samples[:3]:
-                        log_info(f"  excluded[{reason}] {s.get('text')!r} (h3={s.get('h3')!r})")
-        except Exception:
-            pass
-
-        time.sleep(0.3)
-
-        page_assume_is_bc = _infer_page_era_from_html(html, scope_is_bc=scope_is_bc)
-
-        for item in extracted_items:
-            b = item["text"]
-
-            tag = (item.get("tag") or "").strip() or None
-            month_bucket = (item.get("month_bucket") or "").strip() or None
-
-            bullet_text = (b or "").strip()
-            is_circa = bool(re.match(r"^\s*(c\.|ca\.|circa)\b", bullet_text, flags=re.IGNORECASE))
-
-            bullet_span = None if is_circa else SpanParser.parse_span_from_bullet(bullet_text, scope["start_year"], assume_is_bc=page_assume_is_bc)
-            
-            # Initialize all date components to None/defaults to prevent leaking from previous iterations
-            effective_start_year = scope["start_year"]
-            effective_start_month = None
-            effective_start_day = None
-            effective_end_year = scope["end_year"]
-            effective_end_month = None
-            effective_end_day = None
-            effective_is_bc = bool(page_assume_is_bc) if page_assume_is_bc is not None else scope_is_bc
-            precision = scope["precision"]
-            span_match_notes = ""
-
-            if bullet_span is not None:
-                precision = bullet_span.precision
-                effective_start_year = bullet_span.start_year
-                effective_start_month = bullet_span.start_month
-                effective_start_day = bullet_span.start_day
-                effective_end_year = bullet_span.end_year
-                effective_end_month = bullet_span.end_month
-                effective_end_day = bullet_span.end_day
-                effective_is_bc = bullet_span.is_bc
-                span_match_notes = bullet_span.match_type
-
-            category_value = tag or None
-
-            normalized_title = re.sub(r"\s+", " ", (b or "").strip().lower())
+            # Deduplicate events
+            normalized_title = re.sub(r"\s+", " ", event["title"].strip().lower())
             event_key = (
                 normalized_title,
-                int(effective_start_year),
-                int(effective_end_year),
-                bool(effective_is_bc),
+                int(event["start_year"]),
+                int(event["end_year"]),
+                bool(event["is_bc_start"]),
             )
             if event_key in seen_event_keys:
                 continue
             seen_event_keys.add(event_key)
 
-            event = {
-                "title": b[:500],
-                "description": b[:500],
-                "url": canonical_url,
-                "start_year": effective_start_year,
-                "start_month": effective_start_month,
-                "start_day": effective_start_day,
-                "end_year": effective_end_year,
-                "end_month": effective_end_month,
-                "end_day": effective_end_day,
-                "is_bc_start": effective_is_bc,
-                "is_bc_end": effective_is_bc,
-                "pageid": pageid,
-                "_debug_extraction": {
-                    "method": "list_of_years_events_and_trends",
-                    "matches": [],
-                    "snippet": b[:300],
-                    "weight_days": None,  # set below
-                    "events_heading": item.get("events_heading"),
-                    "h3_context": {"tag": tag, "month_bucket": month_bucket},
-                    "scope": scope,
-                    "bullet_span": bullet_span,
-                    "source_page": {"title": title, "url": canonical_url},
-                    "span_match_notes": span_match_notes,
-                },
-            }
-
-            # Keep debug payload explicit so the UI can show how weight was derived.
-            try:
-                span_years = abs(int(effective_end_year) - int(effective_start_year))
-                if span_years == 0:
-                    span_years = 1
-                event["_debug_extraction"]["weight_days"] = int(span_years) * 365
-            except Exception:
-                event["_debug_extraction"]["weight_days"] = None
-
+            # Pipeline Stage 4: Insert event
+            category_value = event.pop("category", None)
             if insert_event(conn, event, category=category_value):
                 total_inserted += 1
 
     log_info(f"Inserted {total_inserted} events from list-of-years")
     _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)
+

@@ -76,7 +76,7 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Avoid defining functions within other functions or methods.
 - Pass variables explicitly rather than relying on closures or outer scope.
 - Use type hints for function parameters and return values.
-- Prefer using dictionaries or data classes for structured data rather than tuples or lists.
+- Use dictionaries or data classes for structured data rather than tuples or lists.
 - When running python tests or any local python code, ALWAYS run them in a virtual environment to avoid dependency conflicts.
 
 ### Frontend (JS)

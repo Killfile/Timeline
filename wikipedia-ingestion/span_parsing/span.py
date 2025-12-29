@@ -15,3 +15,4 @@ class Span:
     is_bc: bool
     precision: str
     match_type: str
+    weight: int | None = None  # Weight in days, computed from span length

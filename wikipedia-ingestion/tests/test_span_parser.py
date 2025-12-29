@@ -34,10 +34,13 @@ class TestSpanParser:
         "ca. 490 BC",
         "circa 490 BC",
     ])
-    def test_parse_span_from_bullet_rejects_circa(self, text):
-        """Test that circa dates are rejected."""
+    def test_parse_span_from_bullet_accepts_circa(self, text):
+        """Test that circa dates are now accepted and parsed."""
         result = SpanParser.parse_span_from_bullet(text, 490, assume_is_bc=True)
-        assert result is None
+        assert result is not None
+        assert result.start_year == 490
+        assert result.is_bc is True
+        assert "circa" in result.match_type.lower()
     
     @pytest.mark.parametrize("text", [
         "",

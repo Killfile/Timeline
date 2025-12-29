@@ -73,7 +73,7 @@ def test_insert_event_rolls_back_then_allows_next_insert(monkeypatch):
 
 
 def test_insert_event_includes_weight_days(monkeypatch):
-    """Weight should be computed as span-years * 365 and included in inserts."""
+    """Weight should be pre-computed and included in inserts."""
     monkeypatch.setattr(ingest, "_require_psycopg2", lambda: None)
 
     fake_cursor = _FakeCursor()
@@ -91,6 +91,7 @@ def test_insert_event_includes_weight_days(monkeypatch):
         "is_bc_end": False,
         "url": "https://en.wikipedia.org/wiki/Example",
         "pageid": 1,
+        "weight": 3650,  # Pre-computed weight
         "_debug_extraction": {"method": "test", "matches": [], "snippet": "x"},
     }
 
