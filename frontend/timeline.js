@@ -83,6 +83,7 @@ function setupEventListeners() {
     document.getElementById('category-select').addEventListener('change', handleCategoryFilter);
     document.getElementById('reset-zoom-btn').addEventListener('click', resetZoom);
     document.getElementById('refresh-btn').addEventListener('click', loadEvents);
+    document.getElementById('fullscreen-btn').addEventListener('click', toggleFullscreen);
     document.getElementById('close-details-btn').addEventListener('click', closeEventDetails);
     
     // Keyboard navigation
@@ -93,6 +94,13 @@ function setupEventListeners() {
 function handleKeyboardNavigation(e) {
     // Don't interfere if user is typing in an input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+    }
+    
+    // Escape key exits fullscreen mode
+    if (e.key === 'Escape' && document.body.classList.contains('fullscreen')) {
+        e.preventDefault();
+        toggleFullscreen();
         return;
     }
     
@@ -1536,6 +1544,26 @@ function resetZoom() {
     svg.transition()
         .duration(750)
         .call(zoom.transform, d3.zoomIdentity);
+}
+
+// Toggle fullscreen mode
+function toggleFullscreen() {
+    const body = document.body;
+    const button = document.getElementById('fullscreen-btn');
+    
+    body.classList.toggle('fullscreen');
+    
+    if (body.classList.contains('fullscreen')) {
+        button.textContent = 'Exit Fullscreen';
+    } else {
+        button.textContent = 'Fullscreen';
+    }
+    
+    // Reinitialize timeline with new dimensions
+    // Clear the existing SVG and rebuild
+    d3.select('#timeline').selectAll('*').remove();
+    initializeTimeline();
+    renderTimeline();
 }
 
 // Handle search
