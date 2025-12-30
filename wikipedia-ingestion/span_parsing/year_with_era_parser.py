@@ -2,7 +2,7 @@
 
 import re
 from span_parsing.strategy import SpanParserStrategy
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class YearWithEraParser(SpanParserStrategy):
@@ -39,8 +39,14 @@ class YearWithEraParser(SpanParserStrategy):
                 end_month=12,
                 end_day=31,
                 is_bc=is_bc,
-                precision="year",
+                precision=SpanPrecision.YEAR_ONLY,
                 match_type=f"Year with explicit era. EG: #### {era}"
             )
             return SpanParser._return_none_if_invalid(span)
         return None
+    
+    def compute_weight_days(self, span: Span) -> int | None:
+        base_weight = super().compute_weight_days(span)
+        if base_weight is None:
+            return None
+        return int(base_weight * span.precision)

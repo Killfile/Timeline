@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS historical_events (
     -- Derived metric: approximate span length in days.
     -- We treat 1 year as 365 days for now.
     weight INTEGER,
+    -- Precision of the date (1.0 = exact, 0.5 = approximate, etc.)
+    precision NUMERIC(10, 2),
     category VARCHAR(100),
     wikipedia_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -58,6 +60,9 @@ CREATE TABLE IF NOT EXISTS event_date_extraction_debug (
 
     -- Derived metric aligned with historical_events.weight.
     chosen_weight_days INTEGER,
+    
+    -- Precision of the span (1.0 = exact, 0.5 = approximate, etc.)
+    chosen_precision NUMERIC(10, 2),
 
     extract_snippet TEXT,
     span_match_notes TEXT,

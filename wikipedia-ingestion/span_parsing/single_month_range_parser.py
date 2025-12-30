@@ -2,7 +2,7 @@
 
 import re
 from span_parsing.strategy import SpanParserStrategy
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class SingleMonthDayRangeParser(SpanParserStrategy):
@@ -40,7 +40,7 @@ class SingleMonthDayRangeParser(SpanParserStrategy):
                     end_month=month,
                     end_day=int(m.group(3)),
                     is_bc=page_bc,
-                    precision="day",
+                    precision=SpanPrecision.EXACT,
                     match_type="Day range within page span (same month). EG: Month DD-DD"
                 )
                 return SpanParser._return_none_if_invalid(span)

@@ -6,6 +6,24 @@ It discovers year pages from Wikipedia's `List_of_years` page, then extracts
 bullets from the per-year "Events" section.
 
 This module owns the HTML parsing logic for year pages.
+
+IMPORTANT NOTE ON WIKIPEDIA URL REDIRECTS:
+==========================================
+Wikipedia uses different URL formats for year pages across different eras:
+  - BC years: /wiki/100_BC
+  - Early AD years (roughly 1-500): /wiki/AD_100
+  - Later AD years (roughly 501+): /wiki/504 (simple numeric format)
+
+Some URLs may redirect to others. For example, /wiki/AD_504 redirects to /wiki/504.
+
+LIMITATION: We do NOT follow HTTP redirects during page discovery. We only discover 
+pages based on the actual href links present in the "List of years" HTML. This means:
+  - If the List of years links to /wiki/504, we discover and process it
+  - If the List of years links to /wiki/AD_504 (which redirects), we discover AD_504
+  - We use URL canonicalization for duplicate detection, but don't fetch redirects
+  
+This approach keeps discovery fast and simple, but means we rely on Wikipedia's 
+"List of years" page having correct links for all years in our configured range.
 """
 
 from __future__ import annotations
@@ -545,13 +563,28 @@ def _discover_yearish_links_from_list_of_years(html: str, *, limit: int | None =
         limit: Optional limit on number of candidates to discover
         min_year: Optional min year dict to determine earliest year to discover
         max_year: Optional max year dict to determine if AD pages should be discovered
+    
+    Note on Wikipedia URL formats:
+        Wikipedia uses different URL formats for year pages in different eras:
+        - BC years: /wiki/100_BC
+        - Early AD years (1-500): /wiki/AD_100
+        - Later AD years (501+): /wiki/504 (simple numeric format)
+        
+        IMPORTANT: We do NOT follow redirects. Some URLs like /wiki/AD_504 may redirect
+        to /wiki/504, but we only discover pages based on the links present in the 
+        "List of years" HTML. This means if Wikipedia links to /wiki/504, we discover it,
+        but if they link to /wiki/AD_504 which redirects to /wiki/504, we treat them
+        as the same page (duplicate detection by final URL).
     """
     soup = BeautifulSoup(html, "lxml")
     candidates: list[dict] = []
     seen_urls: set[str] = set()
 
     bc_re = re.compile(r"^/wiki/(\d{1,4})_BC$")
-    ad_re = re.compile(r"^/wiki/AD_(\d{1,4})$")
+    ad_prefix_re = re.compile(r"^/wiki/AD_(\d{1,4})$")
+    # Match simple numeric year URLs (e.g., /wiki/504) - interpret as AD years
+    # These are used by Wikipedia for years after ~500 AD
+    numeric_year_re = re.compile(r"^/wiki/(\d{1,4})$")
     
     # Discover AD pages if:
     # - No max_year specified (default to discovering all)
@@ -563,7 +596,11 @@ def _discover_yearish_links_from_list_of_years(html: str, *, limit: int | None =
     for a in soup.select('a[href^="/wiki/"]'):
         href = a.get("href") or ""
         m_bc = bc_re.match(href)
-        m_ad = ad_re.match(href) if include_ad else None
+        # Try both AD URL formats: /wiki/AD_### and /wiki/### (numeric only)
+        m_ad_prefix = ad_prefix_re.match(href) if include_ad else None
+        m_numeric = numeric_year_re.match(href) if include_ad else None
+        m_ad = m_ad_prefix or m_numeric
+        
         if not (m_bc or m_ad):
             continue
 
@@ -723,6 +760,10 @@ def _process_event_item(
     if bullet_span is not None and hasattr(bullet_span, 'weight'):
         weight = bullet_span.weight
     
+    # Extract precision value
+    precision_value = None
+    if bullet_span is not None and hasattr(bullet_span, 'precision'):
+        precision_value = bullet_span.precision
 
     event = {
         "title": b[:500],
@@ -737,6 +778,7 @@ def _process_event_item(
         "is_bc_start": effective_is_bc,
         "is_bc_end": effective_is_bc,
         "weight": weight,
+        "precision": precision_value,
         "pageid": pageid,
         "category": category_value,
         "_debug_extraction": {
@@ -744,6 +786,7 @@ def _process_event_item(
             "matches": [],
             "snippet": b[:300],
             "weight_days": weight,
+            "precision": precision_value,
             "events_heading": item.get("events_heading"),
             "h3_context": {"tag": tag, "month_bucket": month_bucket},
             "scope": scope,

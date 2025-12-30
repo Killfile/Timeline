@@ -1,6 +1,7 @@
 """Abstract base class for span parsing strategies."""
 
 from abc import ABC, abstractmethod
+from datetime import date
 from span_parsing.span import Span
 
 

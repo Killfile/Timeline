@@ -312,8 +312,8 @@ def insert_event(conn, event: dict, category: str | None):
         INSERT INTO historical_events
             (title, description, start_year, start_month, start_day, 
              end_year, end_month, end_day, 
-             is_bc_start, is_bc_end, weight, category, wikipedia_url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT ON CONSTRAINT uq_historical_events_identity DO NOTHING
         RETURNING id
     """
@@ -330,6 +330,7 @@ def insert_event(conn, event: dict, category: str | None):
         event.get("is_bc_start", False),
         event.get("is_bc_end", False),
         event.get("weight"),
+        event.get("precision"),
         category,
         event.get("url"),
     )
@@ -350,8 +351,8 @@ def insert_event(conn, event: dict, category: str | None):
                 INSERT INTO historical_events
                     (title, description, start_year, start_month, start_day,
                      end_year, end_month, end_day,
-                     is_bc_start, is_bc_end, weight, category, wikipedia_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 insert_params,
@@ -379,12 +380,14 @@ def insert_event(conn, event: dict, category: str | None):
                      chosen_end_year, chosen_end_month, chosen_end_day,
                      chosen_is_bc_end,
                      chosen_weight_days,
+                     chosen_precision,
                      extract_snippet, span_match_notes)
                 VALUES (%s, %s, %s, %s, %s,
                         %s, %s,
                         %s, %s, %s,
                         %s,
                         %s, %s, %s,
+                        %s,
                         %s,
                         %s,
                         %s, %s)
@@ -406,6 +409,7 @@ def insert_event(conn, event: dict, category: str | None):
                     event.get("end_day"),
                     event.get("is_bc_end", False),
                     debug_weight,
+                    debug.get("precision"),
                     debug.get("snippet"),
                     debug.get("span_match_notes"),
                 ),

@@ -2,7 +2,7 @@
 
 import re
 from span_parsing.strategy import SpanParserStrategy
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision, SpanPrecision
 
 
 class CircaYearParser(SpanParserStrategy):
@@ -55,7 +55,7 @@ class CircaYearParser(SpanParserStrategy):
             end_month=12,
             end_day=31,
             is_bc=is_bc,
-            precision="year",
+            precision=SpanPrecision.CIRCA,
             match_type="Circa year (c./ca./circa ####)"
         )
         

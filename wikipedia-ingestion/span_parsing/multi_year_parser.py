@@ -1,8 +1,9 @@
 """Parser for date ranges spanning multiple years with explicit months and days."""
 
+from datetime import date
 import re
 from span_parsing.strategy import SpanParserStrategy
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
@@ -50,8 +51,25 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
                     end_month=end_month,
                     end_day=end_day,
                     is_bc=page_bc,
-                    precision="day",
+                    precision=SpanPrecision.EXACT,
                     match_type="Day range across years within page span. EG: Month DD, YYYY - Month DD, YYYY"
                 )
                 return SpanParser._return_none_if_invalid(span)
         return None
+    
+    def compute_weight_days(self, span: Span) -> int | None:
+        try:
+            start = date(
+                year= -span.start_year + 1 if span.is_bc else span.start_year,
+                month=span.start_month,
+                day=span.start_day
+            )
+            end = date(
+                year= -span.end_year + 1 if span.is_bc else span.end_year,
+                month=span.end_month,
+                day=span.end_day
+            )
+            delta_days = (end - start).days + 1
+            return int(delta_days * span.precision)
+        except Exception:
+            return None

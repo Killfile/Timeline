@@ -102,10 +102,12 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - The frontend runs on http://localhost:3000 by default.
 - The API runs on http://localhost:8000 by default.
 
+# Database and migrations
+- Don't bother attempting to modify data in place; we will destroy and recreate as needed.
+
 ## How dates work
 
 - BC dates go backwards so 200 BC comes before 100 BC.
 - AD dates go forwards so 100 AD comes before 200 AD.
 - The cutover from BC to AD goes from 1 BC to 1 AD (there is no year 0).
 - Date ingestion should be in chronological order and respect BC/AD rules.
-- 

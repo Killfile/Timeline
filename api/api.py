@@ -48,6 +48,7 @@ class HistoricalEvent(BaseModel):
     is_bc_start: bool = False
     is_bc_end: bool = False
     weight: Optional[int] = None
+    precision: Optional[float] = None
     category: Optional[str] = None
     wikipedia_url: Optional[str] = None
     display_year: Optional[str] = None
@@ -75,6 +76,7 @@ class ExtractionDebug(BaseModel):
     chosen_end_day: Optional[int] = None
     chosen_is_bc_end: bool = False
     chosen_weight_days: Optional[int] = None
+    chosen_precision: Optional[float] = None
     extract_snippet: Optional[str] = None
     pageid: Optional[int] = None
     title: Optional[str] = None
@@ -200,7 +202,7 @@ def get_events(
                 subquery = """
                     (SELECT id, title, description, start_year, start_month, start_day,
                             end_year, end_month, end_day,
-                            is_bc_start, is_bc_end, weight, category, wikipedia_url,
+                            is_bc_start, is_bc_end, weight, precision, category, wikipedia_url,
                             %s as bin_num,
                             ROW_NUMBER() OVER (ORDER BY weight DESC, id) as rank_in_bin
                      FROM historical_events
@@ -227,7 +229,7 @@ def get_events(
             query = f"""
                 SELECT id, title, description, start_year, start_month, start_day,
                        end_year, end_month, end_day,
-                       is_bc_start, is_bc_end, weight, category, wikipedia_url
+                       is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
                 FROM ({query}) AS all_bins
                 ORDER BY rank_in_bin, bin_num
                 LIMIT %s
@@ -239,7 +241,7 @@ def get_events(
             query = """
                 SELECT id, title, description, start_year, start_month, start_day,
                        end_year, end_month, end_day,
-                       is_bc_start, is_bc_end, weight, category, wikipedia_url
+                       is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
                 FROM historical_events 
                 WHERE 1=1
             """
@@ -284,8 +286,9 @@ def get_event(event_id: int):
     
     try:
         cursor.execute("""
-         SELECT id, title, description, start_year, end_year,
-             is_bc_start, is_bc_end, weight, category, wikipedia_url
+         SELECT id, title, description, start_year, start_month, start_day,
+                end_year, end_month, end_day,
+                is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
             FROM historical_events 
             WHERE id = %s
         """, (event_id,))
@@ -327,6 +330,7 @@ def get_event_extraction_debug(event_id: int):
              d.chosen_end_day,
              d.chosen_is_bc_end,
              d.chosen_weight_days,
+             d.chosen_precision,
              d.extract_snippet,
              d.pageid,
              d.title,

@@ -2,6 +2,15 @@
 
 from dataclasses import dataclass
 
+class SpanPrecision:
+    """Enumeration of span precision levels."""
+    EXACT = 1.0          # Exact date
+    APPROXIMATE = 0.5    # Approximate date
+    YEAR_ONLY = 1 / 100  # Year only precision
+    MONTH_ONLY = 1 / 12   # Month only precision
+    SEASON_ONLY = 1 / 4   # Season only precision (e.g., Spring, Summer, etc.)
+    CIRCA = 0
+
 
 @dataclass
 class Span:
@@ -13,6 +22,6 @@ class Span:
     end_month: int
     end_day: int
     is_bc: bool
-    precision: str
     match_type: str
+    precision: float = SpanPrecision.EXACT  # Precision of the span (1.0 = exact, 0.5 = approximate, etc.)
     weight: int | None = None  # Weight in days, computed from span length

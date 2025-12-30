@@ -2,7 +2,7 @@
 
 import re
 from span_parsing.strategy import SpanParserStrategy
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class SingleDayParser(SpanParserStrategy):
@@ -41,8 +41,11 @@ class SingleDayParser(SpanParserStrategy):
                     end_month=month,
                     end_day=day,
                     is_bc=page_bc,
-                    precision="day",
+                    precision=SpanPrecision.EXACT,
                     match_type="Single day within page span. EG: Month DD"
                 )
                 return SpanParser._return_none_if_invalid(span)
         return None
+    
+    def compute_weight_days(self, span: Span) -> int | None:
+        return int(1 * span.precision)
