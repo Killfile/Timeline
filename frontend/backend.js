@@ -9,6 +9,7 @@ class TimelineBackend {
     constructor(orchestrator, apiUrl) {
         this.orchestrator = orchestrator;
         this.apiUrl = apiUrl;
+        this.totalCategoriesCount = null; // Cache for total categories
     }
     
     /**
@@ -27,12 +28,25 @@ class TimelineBackend {
             let url = `${this.apiUrl}/events?viewport_start=${params.viewportStart}&viewport_end=${params.viewportEnd}&viewport_is_bc_start=${params.isStartBC}&viewport_is_bc_end=${params.isEndBC}&limit=${params.limit}`;
             
             // Handle multiple categories (if provided as array)
-            if (params.categories && Array.isArray(params.categories) && params.categories.length > 0) {
+            // Only send category filter if specific categories are selected
+            // If all categories are selected, don't filter - this allows NULL/uncategorized events through
+            const shouldFilterCategories = params.categories && 
+                                          Array.isArray(params.categories) && 
+                                          params.categories.length > 0 &&
+                                          this.totalCategoriesCount &&
+                                          params.categories.length < this.totalCategoriesCount;
+            
+            if (shouldFilterCategories) {
                 // Add each category as a separate query parameter
+                console.log('[Backend] Filtering by', params.categories.length, 'of', this.totalCategoriesCount, 'categories');
                 params.categories.forEach(cat => {
                     url += `&category=${encodeURIComponent(cat)}`;
                 });
-            } else if (params.category) {
+            } else {
+                console.log('[Backend] Not filtering categories (all selected or none) - will include uncategorized events');
+            }
+            
+            if (params.category) {
                 // Legacy: single category support
                 url += `&category=${encodeURIComponent(params.category)}`;
             }
@@ -70,12 +84,20 @@ class TimelineBackend {
             // Use the count endpoint with viewport params
             let url = `${this.apiUrl}/events/count?viewport_start=${params.viewportStart}&viewport_end=${params.viewportEnd}&viewport_is_bc_start=${params.isStartBC}&viewport_is_bc_end=${params.isEndBC}`;
             
-            // Handle multiple categories
-            if (params.categories && Array.isArray(params.categories) && params.categories.length > 0) {
+            // Only send category filter if specific categories are selected
+            const shouldFilterCategories = params.categories && 
+                                          Array.isArray(params.categories) && 
+                                          params.categories.length > 0 &&
+                                          this.totalCategoriesCount &&
+                                          params.categories.length < this.totalCategoriesCount;
+            
+            if (shouldFilterCategories) {
                 params.categories.forEach(cat => {
                     url += `&category=${encodeURIComponent(cat)}`;
                 });
-            } else if (params.category) {
+            }
+            
+            if (params.category) {
                 // Legacy: single category support
                 url += `&category=${encodeURIComponent(params.category)}`;
             }
@@ -115,6 +137,9 @@ class TimelineBackend {
             
             const data = await response.json();
             const categories = data.categories || [];
+            
+            // Cache the total count for category filtering logic
+            this.totalCategoriesCount = categories.length;
             
             console.log('[Backend] Loaded', categories.length, 'categories');
             

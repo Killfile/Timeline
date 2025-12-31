@@ -26,7 +26,7 @@ class YearRangeParser(SpanParserStrategy):
         
         text = self.normalize_dashs(text)
         m = re.search(
-            r"(?<!\d)(\d{1,4})\s*(BC|BCE|AD|CE)?\s*-\s*(\d{1,4})\s*(BC|BCE|AD|CE)?",
+            r"(?<![\d#])(\d{1,4})\s*(BC|BCE|AD|CE)?\s*-\s*(\d{1,4})\s*(BC|BCE|AD|CE)?",
             text,
             flags=re.IGNORECASE,
         )

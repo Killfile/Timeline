@@ -185,22 +185,31 @@ def get_events(
             padded_min = vmin - padding
             padded_max = vmax + padding
 
-            # Strategy: Spatially-balanced binned selection
+            # Strategy: Spatially-balanced binned selection WITH priority for viewport-center events
             # Divide viewport into bins, get top events from each bin by weight,
-            # then round-robin select from bins to ensure spatial distribution.
-            # This works even when all events have the same weight.
+            # but prioritize events that are actually IN the viewport over padded areas.
+            # This ensures we show WWI/WWII events in 1915-1945, not just high-weight pre-1915 events.
             
             num_bins = 10
             events_per_bin = max(10, limit // num_bins + 20)  # Get extra per bin to fill gaps
-            padded_span = padded_max - padded_min
+            
+            # Create bins ONLY in the actual viewport, not the padded area
+            # This ensures we prioritize events actually in view
+            bin_span = vmax - vmin
+            
+            # Filter out events with unreasonably large spans (likely data errors or overly broad events)
+            # Events with spans > 3x the viewport are likely not useful to show
+            # For example, in a 30-year viewport (1915-1945), we don't want to show events spanning 190 years
+            max_reasonable_span = span * 3
             
             query_parts = []
             params = []
             
             for i in range(num_bins):
-                bin_start = padded_min + padded_span * i / num_bins
-                bin_end = padded_min + padded_span * (i + 1) / num_bins
+                bin_start = vmin + bin_span * i / num_bins
+                bin_end = vmin + bin_span * (i + 1) / num_bins
                 
+                # Event overlaps bin if: event_start <= bin_end AND event_end >= bin_start
                 subquery = """
                     (SELECT id, title, description, start_year, start_month, start_day,
                             end_year, end_month, end_day,
@@ -211,10 +220,12 @@ def get_events(
                      WHERE weight IS NOT NULL
                        AND start_year IS NOT NULL
                        AND end_year IS NOT NULL
-                       AND (CASE WHEN is_bc_start THEN -start_year ELSE start_year END) >= %s
-                       AND (CASE WHEN is_bc_start THEN -start_year ELSE start_year END) < %s
+                       AND (CASE WHEN is_bc_start THEN -start_year ELSE start_year END) <= %s
+                       AND (CASE WHEN is_bc_end THEN -end_year ELSE end_year END) >= %s
+                       AND ABS((CASE WHEN is_bc_end THEN -end_year ELSE end_year END) - 
+                               (CASE WHEN is_bc_start THEN -start_year ELSE start_year END)) <= %s
                 """
-                params.extend([i, bin_start, bin_end])
+                params.extend([i, bin_end, bin_start, max_reasonable_span])
                 
                 # Handle multiple categories
                 if category and len(category) > 0:
@@ -229,13 +240,14 @@ def get_events(
             
             # Union all bins, then use ROW_NUMBER to interleave events from different bins
             # This ensures we get a balanced sample across the timeline
+            # Use DISTINCT ON to deduplicate events that span multiple bins
             query = " UNION ALL ".join(query_parts)
             query = f"""
-                SELECT id, title, description, start_year, start_month, start_day,
+                SELECT DISTINCT ON (id) id, title, description, start_year, start_month, start_day,
                        end_year, end_month, end_day,
                        is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
                 FROM ({query}) AS all_bins
-                ORDER BY rank_in_bin, bin_num
+                ORDER BY id, rank_in_bin, bin_num
                 LIMIT %s
             """
             params.append(limit)
