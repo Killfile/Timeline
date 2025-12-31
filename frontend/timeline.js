@@ -165,6 +165,88 @@ function reloadViewportEvents(startYear, endYear) {
 }
 
 /**
+ * Create a smart tick formatter that adapts to zoom level
+ * Returns a function that formats ticks as years, months, or days based on visible range
+ * Ensures no duplicate labels by using different detail levels at different zoom levels
+ */
+function createSmartTickFormatter(scale) {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    return function(d) {
+        const domain = scale.domain();
+        const rangeYears = Math.abs(domain[1] - domain[0]);
+        
+        // Determine detail level based on visible range
+        if (rangeYears > 10) {
+            // Year-only level (wide zoom)
+            const year = Math.round(d);
+            // Only show whole years to avoid duplicates
+            if (Math.abs(d - year) > 0.05) return '';
+            
+            if (year < 0) return `${Math.abs(year)} BC`;
+            if (year === 0) return '1 BC';
+            return `${year} AD`;
+            
+        } else if (rangeYears > 1) {
+            // Year + Month level (medium zoom)
+            const year = Math.floor(d);
+            const fraction = d - year;
+            const monthFloat = fraction * 12;
+            const month = Math.round(monthFloat);
+            
+            // Only show if close to month boundary (avoid duplicates within same month)
+            if (Math.abs(monthFloat - month) > 0.15) return '';
+            if (month < 0 || month > 11) return '';
+            
+            const absYear = Math.abs(year);
+            const era = year < 0 ? 'BC' : 'AD';
+            
+            // For wider ranges, show year with month, for narrower just month
+            if (rangeYears > 3) {
+                return `${monthNames[month]} ${absYear} ${era}`;
+            } else {
+                // Just show month name to reduce clutter when focused on one year
+                return `${monthNames[month]}`;
+            }
+            
+        } else {
+            // Day level (narrow zoom)
+            const year = Math.floor(d);
+            const fraction = d - year;
+            const dayOfYear = Math.round(fraction * 365);
+            
+            // Convert day of year to month and day
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            let month = 0;
+            let day = dayOfYear;
+            
+            for (let i = 0; i < 12; i++) {
+                if (day <= daysInMonth[i]) {
+                    month = i;
+                    break;
+                }
+                day -= daysInMonth[i];
+            }
+            
+            // Clamp to valid range
+            if (month < 0 || month > 11) return '';
+            if (day < 1 || day > daysInMonth[month]) return '';
+            
+            const absYear = Math.abs(year);
+            const era = year < 0 ? 'BC' : 'AD';
+            
+            // For very narrow ranges, just show date without year
+            if (rangeYears < 0.3) {
+                return `${monthNames[month]} ${day}`;
+            } else {
+                return `${monthNames[month]} ${day}, ${absYear} ${era}`;
+            }
+        }
+    };
+}
+
+/**
  * Initialize the timeline renderer
  * Sets up the SVG container, scales, and event handlers
  */
@@ -203,15 +285,10 @@ function initializeTimeline() {
         .domain([-3000, 2024])
         .range([0, width]);
 
-    // Create and render initial axis
+    // Create and render initial axis with smart tick formatting
     xAxis = d3.axisBottom(xScale)
         .ticks(10)
-        .tickFormat(d => {
-            const year = Math.round(d);
-            if (year < 0) return `${Math.abs(year)} BC`;
-            if (year === 0) return '1 BC';
-            return `${year} AD`;
-        });
+        .tickFormat(createSmartTickFormatter(xScale));
     
     xAxisGroup.call(xAxis);
 
@@ -304,7 +381,10 @@ function handleZoom(event) {
     
     // Rescale the X axis with the new transform
     const newXScale = event.transform.rescaleX(xScale);
-    svg.select('.x-axis').call(xAxis.scale(newXScale));
+    
+    // Update axis with smart formatting based on new zoom level
+    xAxis.scale(newXScale).tickFormat(createSmartTickFormatter(newXScale));
+    svg.select('.x-axis').call(xAxis);
 
     // Calculate new time range
     const newDomain = newXScale.domain();
