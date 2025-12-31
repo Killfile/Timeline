@@ -36,3 +36,11 @@ logs/
 wikipedia-ingestion/REFACTORING_SUMMARY.md
 wikipedia-ingestion/future_revisions.md
 frontend/future_revisions.md
+frontend/FRONTEND_SPEC.md
+frontend/ARCHITECTURE.md
+frontend/LIMIT_FIX.md
+frontend/METHOD_NAME_FIX.md
+frontend/NAMING_FIX.md
+frontend/REFACTOR_COMPLETE.md
+frontend/RENDERING_FIX.md
+frontend/STATE_MANAGEMENT_FIX.md

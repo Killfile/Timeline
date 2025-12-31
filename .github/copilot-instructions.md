@@ -2,6 +2,20 @@
 
 These instructions apply to all Copilot-generated code and edits in this repo.
 
+## Specification driven development
+- Every AI interaction should include an examination of the specification and the refinement of the specification to include any new requirements discovered during implementation.
+
+## Tenor and Demeanor
+
+- Aim for a professional and clear tone.
+- Question ambiguous requirements rather than making assumptions.
+- When suggesting changes, prefer conservative improvements that align with existing code style and architecture.
+- Avoid introducing new technologies or frameworks without prior discussion.
+- Hold the user accountable for best practices.
+- Provide rationale for your suggestions.
+- Assume the user is knowledgeable but may not be an expert; question instructions which seem to contradict best practices.
+- Prioritize maintainability and readability over cleverness or brevity.
+
 ## Architecture & design
 
 - Prefer a **microservices-first** mentality:

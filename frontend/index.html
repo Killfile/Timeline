@@ -41,6 +41,10 @@
                 <span id="total-events" class="stat-value">0</span>
             </div>
             <div class="stat-box">
+                <span class="stat-label">Events in Scope:</span>
+                <span id="events-in-scope" class="stat-value">0</span>
+            </div>
+            <div class="stat-box">
                 <span class="stat-label">Time Range:</span>
                 <span id="time-range" class="stat-value">-</span>
             </div>
@@ -48,53 +52,29 @@
                 <span class="stat-label">Loaded Events:</span>
                 <span id="loaded-events" class="stat-value">0</span>
             </div>
+            <div class="stat-box">
+                <span class="stat-label">Events Placed:</span>
+                <span id="events-placed" class="stat-value">0</span>
+            </div>
         </div>
 
         <div id="timeline-container">
             <svg id="timeline"></svg>
-            <div id="timeline-legend" class="timeline-legend" aria-label="Timeline key"></div>
+            <div id="category-legend" class="category-legend" aria-label="Category legend"></div>
         </div>
 
         <div id="event-details" class="event-details hidden">
-            <div class="event-details-header">
-                <h2 id="event-title"></h2>
-                <button id="close-details-btn">&times;</button>
-            </div>
-            <div class="event-details-content">
-                <p><strong>Time Period:</strong> <span id="event-period"></span></p>
-                <p><strong>Category:</strong> <span id="event-category"></span></p>
-                <p id="event-description"></p>
-
-                <details id="event-debug-details" class="event-debug">
-                    <summary>Debug (date extraction)</summary>
-                    <div class="event-debug-body">
-                        <div id="event-debug-loading" class="event-debug-loading hidden">Loading…</div>
-                        <div id="event-debug-error" class="event-debug-error hidden"></div>
-                        <dl id="event-debug-dl" class="event-debug-dl hidden">
-                            <dt>Strategy</dt>
-                            <dd id="event-debug-strategy">-</dd>
-
-                            <dt>Match Type</dt>
-                            <dd id="event-debug-match-type">-</dd>
-
-                            <dt>Extracted start</dt>
-                            <dd id="event-debug-start">-</dd>
-
-                            <dt>Start date details</dt>
-                            <dd id="event-debug-start-details">-</dd>
-
-                            <dt>Extracted end</dt>
-                            <dd id="event-debug-end">-</dd>
-
-                            <dt>End date details</dt>
-                            <dd id="event-debug-end-details">-</dd>
-
-                            <dt>Weight (days)</dt>
-                            <dd id="event-debug-weight">-</dd>
-                        </dl>
-                    </div>
-                </details>
-                <a id="event-wikipedia-link" href="#" target="_blank">Read more on Wikipedia →</a>
+            <div class="event-details-container">
+                <div class="event-details-header">
+                    <h2 id="event-title"></h2>
+                    <button id="close-details-btn">&times;</button>
+                </div>
+                <div class="event-details-content">
+                    <p><strong>Time Period:</strong> <span id="event-period"></span></p>
+                    <p><strong>Category:</strong> <span id="event-category"></span></p>
+                    <div id="event-description"></div>
+                    <a id="event-wikipedia-link" href="#" target="_blank">Read more on Wikipedia →</a>
+                </div>
             </div>
         </div>
 
@@ -110,6 +90,13 @@
         </div>
     </div>
 
+    <!-- Load modules in dependency order -->
+    <script src="orchestrator.js"></script>
+    <script src="backend.js"></script>
+    <script src="observability.js"></script>
+    <script src="legend.js"></script>
+    <script src="packing.js"></script>
     <script src="timeline.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
