@@ -10,6 +10,8 @@ class TimelinePacking {
         this.orchestrator = orchestrator;
         this.globalLaneAssignments = new Map(); // eventId -> laneIndex (cache across viewport changes)
         this.globalTotalLanes = 1;
+        this.lastTransformK = 1; // Track zoom level to detect zoom vs pan
+        this.currentViewportDomain = null; // Track current viewport [start, end]
         
         // Subscribe to events and scale changes
         this.orchestrator.subscribe('events', (events) => this.packEvents(events));
@@ -34,10 +36,24 @@ class TimelinePacking {
         
         console.log('[Packing] Using scale, domain:', currentScale.domain());
         
+        // Detect if this is a pan (domain changed but scale factor didn't)
+        const viewport = this.orchestrator.getState()?.viewport;
+        const newDomain = currentScale.domain();
+        const isPan = viewport && viewport.transform && 
+                      Math.abs(viewport.transform.k - this.lastTransformK) < 0.001;
+        
+        if (viewport?.transform) {
+            this.lastTransformK = viewport.transform.k;
+        }
+        
+        this.currentViewportDomain = newDomain;
+        
+        console.log('[Packing] Operation type:', isPan ? 'PAN' : 'ZOOM');
+        
         const maxLanes = this.orchestrator.getAvailableLanes();
         console.log('[Packing] Available lanes:', maxLanes);
         
-        const result = this.calculateLanes(events, currentScale, maxLanes);
+        const result = this.calculateLanes(events, currentScale, maxLanes, isPan);
         
         console.log('[Packing] Calculation complete:', result.sublaneById.size, 'placed,', result.skippedEvents.length, 'skipped');
         
@@ -67,9 +83,15 @@ class TimelinePacking {
     /**
      * Calculate lane assignments using bounding box collision detection
      */
-    calculateLanes(renderData, scale, maxLanes = Infinity) {
+    calculateLanes(renderData, scale, maxLanes = Infinity, isPan = false) {
         const sublaneById = new Map();
         const skippedEvents = [];
+        
+        // Get viewport bounds for sticky lane logic
+        const viewportBounds = this.currentViewportDomain ? {
+            start: this.currentViewportDomain[0],
+            end: this.currentViewportDomain[1]
+        } : null;
         
         // Sort events by start time for left-to-right processing
         const intervals = renderData
@@ -107,15 +129,26 @@ class TimelinePacking {
             // Try to place in existing lanes (prefer cached lane if available)
             let placed = false;
             const cachedLane = this.globalLaneAssignments.get(d.id);
+            
+            // Check if event should stick to its lane during pan (stretch goal: fully visible)
+            const shouldStick = isPan && cachedLane !== undefined && 
+                                this.isEventFullyInViewport(span, viewportBounds);
+            
             const lanesToTry = [];
             
-            // Build priority list: cached lane first, then 0 to maxLanes
-            if (cachedLane !== undefined && cachedLane < maxLanes) {
+            if (shouldStick) {
+                // During pan, if event is fully visible, ONLY try its cached lane
                 lanesToTry.push(cachedLane);
-            }
-            for (let i = 0; i < maxLanes; i++) {
-                if (i !== cachedLane) {
-                    lanesToTry.push(i);
+                console.log('[Packing] Sticky lane for event', d.id, '- keeping in lane', cachedLane);
+            } else {
+                // Build priority list: cached lane first, then 0 to maxLanes
+                if (cachedLane !== undefined && cachedLane < maxLanes) {
+                    lanesToTry.push(cachedLane);
+                }
+                for (let i = 0; i < maxLanes; i++) {
+                    if (i !== cachedLane) {
+                        lanesToTry.push(i);
+                    }
                 }
             }
             
@@ -156,6 +189,30 @@ class TimelinePacking {
      */
     hasSpan(d) {
         return d.end_year !== null && d.end_year !== undefined;
+    }
+    
+    /**
+     * Helper: Check if event is fully within viewport bounds
+     * For stretch goal: event must be completely visible
+     */
+    isEventFullyInViewport(span, viewportBounds) {
+        if (!viewportBounds) return false;
+        
+        // Event is fully in viewport if both start and end are within bounds
+        return span.start >= viewportBounds.start && 
+               span.end <= viewportBounds.end;
+    }
+    
+    /**
+     * Helper: Check if event midpoint is within viewport bounds
+     * For basic goal: event stays in lane until midpoint leaves viewport
+     */
+    isEventMidpointInViewport(span, viewportBounds) {
+        if (!viewportBounds) return false;
+        
+        const midpoint = (span.start + span.end) / 2;
+        return midpoint >= viewportBounds.start && 
+               midpoint <= viewportBounds.end;
     }
     
     /**
