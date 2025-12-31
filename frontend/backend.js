@@ -152,6 +152,28 @@ class TimelineBackend {
     async getCategories() {
         return this.loadCategories();
     }
+
+    /**
+     * Get extraction debug information for an event
+     * @param {number} eventId - The event ID
+     */
+    async getExtractionDebug(eventId) {
+        try {
+            const response = await fetch(`${this.apiUrl}/events/${eventId}/extraction-debug`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const debug = await response.json();
+            
+            console.log('[Backend] Loaded extraction debug for event', eventId);
+            
+            return debug;
+        } catch (error) {
+            console.error('[Backend] Error loading extraction debug:', error);
+            throw error;
+        }
+    }
 }
 
 // Initialize backend when orchestrator is ready

@@ -21,6 +21,7 @@ const PADDING = 8;
 // D3 selection references
 let svg, xScale, xAxis, zoom;
 let currentTransform = d3.zoomIdentity;
+let tooltip = null;  // Tooltip for hover preview
 
 // Debounce timer for viewport event reloading
 let reloadTimer = null;
@@ -66,6 +67,13 @@ function reloadViewportEvents(startYear, endYear) {
             });
             
             console.log(`[Timeline] Loaded ${events.length} events for viewport`);
+            
+            // Update eventsInScope stat to reflect current viewport
+            const stats = window.timelineOrchestrator.getStats();
+            window.timelineOrchestrator.updateStats({
+                ...stats,
+                eventsInScope: events.length
+            });
             
             // Events are already set in orchestrator by backend
             // The packing module will automatically repack using the current transformed scale
@@ -155,6 +163,24 @@ function initializeTimeline() {
             .attr('stroke-width', i === 0 || i === VISIBLE_LANES ? 1 : 0.5)
             .attr('opacity', 0.2);
     }
+
+    // Create tooltip for hover preview
+    tooltip = d3.select('body')
+        .append('div')
+        .attr('class', 'timeline-tooltip')
+        .style('position', 'absolute')
+        .style('visibility', 'hidden')
+        .style('background', '#fff')
+        .style('color', '#000')
+        .style('border', '1px solid #000')
+        .style('padding', '8px 12px')
+        .style('border-radius', '4px')
+        .style('font-size', '12px')
+        .style('font-family', 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif')
+        .style('pointer-events', 'none')
+        .style('z-index', '1001')
+        .style('max-width', '300px')
+        .style('box-shadow', '0 2px 4px rgba(0,0,0,0.2)');
 
     // Subscribe to orchestrator state changes
     window.timelineOrchestrator.subscribe('eventsUpdated', render);
@@ -332,7 +358,10 @@ function render() {
         .append('g')
         .attr('class', 'event-group')
         .style('cursor', 'pointer')
-        .on('click', handleEventClick);
+        .on('click', handleEventClick)
+        .on('mouseover', handleEventMouseOver)
+        .on('mousemove', handleEventMouseMove)
+        .on('mouseout', handleEventMouseOut);
 
     // Span bar (for events with duration)
     groupsEnter.append('rect')
@@ -392,6 +421,52 @@ function render() {
             eventsPlaced: eventData.length
         }
     });
+}
+
+/**
+ * Handle mouse over event - show tooltip
+ */
+function handleEventMouseOver(event, d) {
+    if (!tooltip) return;
+    
+    const title = d.title || d.name || 'Untitled Event';
+    const maxLength = 100;
+    const displayTitle = title.length > maxLength 
+        ? title.substring(0, maxLength) + '...' 
+        : title;
+    
+    // Format time period
+    const startYear = d.is_bc_start 
+        ? `${d.start_year} BC` 
+        : `${d.start_year} AD`;
+    const endYear = d.end_year 
+        ? (d.is_bc_end ? `${d.end_year} BC` : `${d.end_year} AD`)
+        : null;
+    const periodText = endYear ? `${startYear} - ${endYear}` : startYear;
+    
+    tooltip
+        .html(`<strong>${displayTitle}</strong><br/><span style="font-size: 11px; color: #666;">${periodText}</span>`)
+        .style('visibility', 'visible');
+}
+
+/**
+ * Handle mouse move - update tooltip position
+ */
+function handleEventMouseMove(event) {
+    if (!tooltip) return;
+    
+    tooltip
+        .style('top', (event.pageY + 15) + 'px')
+        .style('left', (event.pageX + 15) + 'px');
+}
+
+/**
+ * Handle mouse out - hide tooltip
+ */
+function handleEventMouseOut() {
+    if (!tooltip) return;
+    
+    tooltip.style('visibility', 'hidden');
 }
 
 /**
@@ -492,27 +567,28 @@ function handleEventClick(event, d) {
         <details style="margin-bottom: 1em; padding: 0.5em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;">
             <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5em; color: #333;">Source Data</summary>
             <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.25em 1em;">
-                <dt style="font-weight: bold;">Source:</dt>
-                <dd style="margin: 0;">${d.source || 'N/A'}</dd>
-                
-                <dt style="font-weight: bold;">Article Title:</dt>
-                <dd style="margin: 0; word-break: break-word;">${d.article_title || 'N/A'}</dd>
+                <dt style="font-weight: bold;">Wikipedia URL:</dt>
+                <dd style="margin: 0; word-break: break-all;"><a href="${d.wikipedia_url || '#'}" target="_blank" style="color: #667eea;">${d.wikipedia_url || 'N/A'}</a></dd>
                 
                 <dt style="font-weight: bold;">Weight (days):</dt>
-                <dd style="margin: 0;">${d.chosen_weight_days !== null ? d.chosen_weight_days : 'N/A'}</dd>
+                <dd style="margin: 0;">${d.weight !== null && d.weight !== undefined ? d.weight : 'N/A'}</dd>
                 
-                <dt style="font-weight: bold;">Extraction Strategy:</dt>
-                <dd style="margin: 0;">${d.extraction_strategy || 'N/A'}</dd>
-                
-                <dt style="font-weight: bold;">Match Type:</dt>
-                <dd style="margin: 0;">${d.span_match_notes || 'N/A'}</dd>
+                <dt style="font-weight: bold;">Precision:</dt>
+                <dd style="margin: 0;">${d.precision !== null && d.precision !== undefined ? d.precision : 'N/A'}</dd>
             </dl>
+        </details>
+        
+        <details id="extraction-debug-section" style="margin-bottom: 1em; padding: 0.5em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;">
+            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5em; color: #333;">Extraction Debug Info</summary>
+            <div id="extraction-debug-content" style="margin-top: 0.5em;">
+                <em style="color: #666;">Loading...</em>
+            </div>
         </details>
     `;
     
     // Set Wikipedia link
-    if (d.source_url) {
-        wikipediaLink.href = d.source_url;
+    if (d.wikipedia_url) {
+        wikipediaLink.href = d.wikipedia_url;
         wikipediaLink.style.display = 'block';
     } else {
         wikipediaLink.style.display = 'none';
@@ -520,6 +596,50 @@ function handleEventClick(event, d) {
     
     // Show the modal
     modal.classList.remove('hidden');
+    
+    // Fetch extraction debug information asynchronously
+    fetchExtractionDebug(d.id);
+}
+
+/**
+ * Fetch extraction debug information for an event
+ */
+async function fetchExtractionDebug(eventId) {
+    const debugContent = document.getElementById('extraction-debug-content');
+    if (!debugContent) return;
+    
+    try {
+        const debug = await window.timelineBackend.getExtractionDebug(eventId);
+        
+        // Display debug information
+        debugContent.innerHTML = `
+            <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.25em 1em; font-size: 11px;">
+                <dt style="font-weight: bold;">Extraction Method:</dt>
+                <dd style="margin: 0;">${debug.extraction_method || 'N/A'}</dd>
+                
+                <dt style="font-weight: bold;">Span Match Notes:</dt>
+                <dd style="margin: 0;">${debug.span_match_notes || 'N/A'}</dd>
+                
+                <dt style="font-weight: bold;">Chosen Weight (days):</dt>
+                <dd style="margin: 0;">${debug.chosen_weight_days !== null ? debug.chosen_weight_days : 'N/A'}</dd>
+                
+                <dt style="font-weight: bold;">Chosen Precision:</dt>
+                <dd style="margin: 0;">${debug.chosen_precision !== null ? debug.chosen_precision : 'N/A'}</dd>
+                
+                <dt style="font-weight: bold;">Article Title:</dt>
+                <dd style="margin: 0; word-break: break-word;">${debug.title || 'N/A'}</dd>
+                
+                <dt style="font-weight: bold;">Page ID:</dt>
+                <dd style="margin: 0;">${debug.pageid || 'N/A'}</dd>
+                
+                <dt style="font-weight: bold;">Extract Snippet:</dt>
+                <dd style="margin: 0; font-family: monospace; white-space: pre-wrap; word-break: break-word;">${debug.extract_snippet || 'N/A'}</dd>
+            </dl>
+        `;
+    } catch (error) {
+        console.error('[Timeline] Error fetching extraction debug:', error);
+        debugContent.innerHTML = `<em style="color: #b00020;">Failed to load debug information: ${error.message}</em>`;
+    }
 }
 
 // Add close button handler
