@@ -2,7 +2,7 @@
 
 import pytest
 from span_parsing.month_only_parser import MonthOnlyParser
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class TestMonthOnlyParser:
@@ -27,8 +27,7 @@ class TestMonthOnlyParser:
         assert result.end_month == expected_month
         assert result.end_day == expected_end_day
         assert result.is_bc is expected_is_bc
-        if not expected_is_bc:
-            assert result.precision == "month"
+        assert result.precision == SpanPrecision.MONTH_ONLY
     
     @pytest.mark.parametrize("text", [
         "january",

@@ -2,7 +2,7 @@
 
 import pytest
 from span_parsing.year_only_parser import YearOnlyParser
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class TestYearOnlyParser:
@@ -23,7 +23,7 @@ class TestYearOnlyParser:
         assert result.start_year == expected_year
         assert result.end_year == expected_year
         assert result.is_bc is expected_bc
-        assert result.precision == "year"
+        assert result.precision == SpanPrecision.YEAR_ONLY
         assert result.start_month == 1
         assert result.start_day == 1
         assert result.end_month == 12

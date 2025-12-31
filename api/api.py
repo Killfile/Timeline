@@ -145,7 +145,7 @@ def health_check():
 def get_events(
     start_year: Optional[int] = Query(None, description="Filter events starting from this year"),
     end_year: Optional[int] = Query(None, description="Filter events up to this year"),
-    category: Optional[str] = Query(None, description="Filter by category"),
+    category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
     viewport_start: Optional[int] = Query(None, description="Viewport start year (for weight-based filtering)"),
     viewport_end: Optional[int] = Query(None, description="Viewport end year (for weight-based filtering)"),
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
@@ -160,6 +160,8 @@ def get_events(
     2. Filters to events that overlap the padded range
     3. Orders by weight DESC
     4. Returns top `limit` highest-weight events in viewport
+    
+    The category parameter can be specified multiple times to filter by multiple categories.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -214,9 +216,11 @@ def get_events(
                 """
                 params.extend([i, bin_start, bin_end])
                 
-                if category:
-                    subquery += " AND category = %s"
-                    params.append(category)
+                # Handle multiple categories
+                if category and len(category) > 0:
+                    placeholders = ','.join(['%s'] * len(category))
+                    subquery += f" AND category IN ({placeholders})"
+                    params.extend(category)
                 
                 subquery += " ORDER BY weight DESC, id LIMIT %s)"
                 params.append(events_per_bin)
@@ -255,9 +259,11 @@ def get_events(
                 query += " AND (end_year <= %s OR end_year IS NULL)"
                 params.append(end_year)
             
-            if category:
-                query += " AND category = %s"
-                params.append(category)
+            # Handle multiple categories
+            if category and len(category) > 0:
+                placeholders = ','.join(['%s'] * len(category))
+                query += f" AND category IN ({placeholders})"
+                params.extend(category)
             
             query += " ORDER BY start_year ASC NULLS LAST, end_year ASC NULLS LAST"
             query += " LIMIT %s OFFSET %s"
@@ -282,7 +288,7 @@ def get_events(
 def get_events_count(
     start_year: Optional[int] = Query(None, description="Filter events starting from this year"),
     end_year: Optional[int] = Query(None, description="Filter events up to this year"),
-    category: Optional[str] = Query(None, description="Filter by category"),
+    category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
     viewport_start: Optional[int] = Query(None, description="Viewport start year"),
     viewport_end: Optional[int] = Query(None, description="Viewport end year"),
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
@@ -292,6 +298,8 @@ def get_events_count(
     
     When viewport params are provided, this returns the total count of events
     that fall within the viewport range (without limit).
+    
+    The category parameter can be specified multiple times to filter by multiple categories.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -337,9 +345,11 @@ def get_events_count(
                 query += " AND (end_year <= %s OR end_year IS NULL)"
                 params.append(end_year)
         
-        if category:
-            query += " AND category = %s"
-            params.append(category)
+        # Handle multiple categories
+        if category and len(category) > 0:
+            placeholders = ','.join(['%s'] * len(category))
+            query += f" AND category IN ({placeholders})"
+            params.extend(category)
         
         cursor.execute(query, params)
         result = cursor.fetchone()

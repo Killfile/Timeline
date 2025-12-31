@@ -2,7 +2,7 @@
 
 import pytest
 from span_parsing.single_day_parser import SingleDayParser
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class TestSingleDayParser:
@@ -27,7 +27,7 @@ class TestSingleDayParser:
         assert result.end_month == expected_month
         assert result.end_day == expected_day
         assert result.is_bc is page_bc
-        assert result.precision == "day"
+        assert result.precision == SpanPrecision.EXACT
     
     @pytest.mark.parametrize("text", [
         "january 15",

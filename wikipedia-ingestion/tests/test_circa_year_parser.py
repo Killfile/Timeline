@@ -3,6 +3,7 @@
 import pytest
 from span_parsing.circa_year_parser import CircaYearParser
 from span_parsing.span_parser import SpanParser
+from span_parsing.span import SpanPrecision
 
 
 class TestCircaYearParser:
@@ -16,7 +17,7 @@ class TestCircaYearParser:
         assert span.start_year == 450
         assert span.end_year == 450
         assert span.is_bc is True
-        assert span.precision == "year"
+        assert span.precision == SpanPrecision.CIRCA
         assert "circa" in span.match_type.lower()
     
     def test_circa_with_ca_period(self):
@@ -27,7 +28,7 @@ class TestCircaYearParser:
         assert span.start_year == 1200
         assert span.end_year == 1200
         assert span.is_bc is False
-        assert span.precision == "year"
+        assert span.precision == SpanPrecision.CIRCA
     
     def test_circa_full_word(self):
         """Test 'circa YEAR' pattern."""

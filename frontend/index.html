@@ -17,9 +17,22 @@
         <div class="controls">
             <input type="text" id="search-input" placeholder="🔍 Search events..." title="Search historical events">
             
-            <select id="category-select" title="Filter by category">
-                <option value="">All Categories</option>
-            </select>
+            <div class="category-filter-container">
+                <button id="category-filter-toggle" class="category-filter-toggle" title="Filter by categories">
+                    📂 Categories (<span id="selected-category-count">0</span>)
+                </button>
+                <div id="category-filter-dropdown" class="category-filter-dropdown hidden">
+                    <div class="category-filter-header">
+                        <label class="category-filter-item">
+                            <input type="checkbox" id="select-all-categories" checked>
+                            <span class="category-label"><strong>Select All</strong></span>
+                        </label>
+                    </div>
+                    <div id="category-filter-list" class="category-filter-list">
+                        <!-- Categories will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
 
             <button id="reset-zoom-btn" title="Reset Zoom" aria-label="Reset Zoom">⟲</button>
             <button id="refresh-btn" title="Refresh Data" aria-label="Refresh Data">↻</button>
@@ -86,6 +99,7 @@
     <script src="backend.js"></script>
     <script src="observability.js"></script>
     <script src="legend.js"></script>
+    <script src="categoryFilter.js"></script>
     <script src="packing.js"></script>
     <script src="timeline.js"></script>
     <script src="app.js"></script>

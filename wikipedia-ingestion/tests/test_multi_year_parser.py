@@ -2,7 +2,7 @@
 
 import pytest
 from span_parsing.multi_year_parser import MultiYearMonthAndDayRangeParser
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 class TestMultiYearMonthAndDayRangeParser:
@@ -27,7 +27,7 @@ class TestMultiYearMonthAndDayRangeParser:
         assert result.end_month == expected_end_month
         assert result.end_day == expected_end_day
         assert result.is_bc is expected_is_bc
-        assert result.precision == "day"
+        assert result.precision == SpanPrecision.EXACT
     
     @pytest.mark.parametrize("text", [
         "March 15, 2019 – April 20, 2020",

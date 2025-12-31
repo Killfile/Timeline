@@ -13,6 +13,7 @@ class TimelineOrchestrator {
         this.totalLanes = 1;
         this.availableLanes = 10; // Fixed number of visible lanes
         this.categoryColors = new Map(); // category -> color
+        this.selectedCategories = []; // Array of selected category names (default: all)
         this.viewport = null; // Current viewport (startDate, endDate, transform)
         this.stats = {
             totalEvents: 0,
@@ -30,6 +31,7 @@ class TimelineOrchestrator {
             laneAssignmentsUpdated: [], // Alias for laneAssignments
             categoryColors: [],
             categoryColorsUpdated: [], // Alias for categoryColors
+            categoriesFilterChanged: [], // Category filter changes
             stats: [],
             scale: [],
             viewport: []
@@ -115,6 +117,18 @@ class TimelineOrchestrator {
     // Get color for a category
     getCategoryColor(category) {
         return this.categoryColors.get(category) || '#666';
+    }
+    
+    // Set selected categories (from category filter)
+    setSelectedCategories(categories) {
+        this.selectedCategories = categories;
+        console.log(`[Orchestrator] Selected categories updated: ${categories.length} selected`);
+        this.notify('categoriesFilterChanged', categories);
+    }
+    
+    // Get selected categories
+    getSelectedCategories() {
+        return this.selectedCategories;
     }
     
     // Update stats

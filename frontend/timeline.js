@@ -140,15 +140,20 @@ function reloadViewportEvents(startYear, endYear) {
             const isStartBC = startYear < 0;
             const isEndBC = endYear < 0;
             
-            console.log(`[Timeline] Loading events for viewport: ${isStartBC ? Math.abs(Math.round(startYear)) + ' BC' : Math.round(startYear) + ' AD'} to ${isEndBC ? Math.abs(Math.round(endYear)) + ' BC' : Math.round(endYear) + ' AD'}`);
+            // Get selected categories from orchestrator
+            const selectedCategories = window.timelineOrchestrator.getSelectedCategories();
             
-            // Load events for this viewport
+            console.log(`[Timeline] Loading events for viewport: ${isStartBC ? Math.abs(Math.round(startYear)) + ' BC' : Math.round(startYear) + ' AD'} to ${isEndBC ? Math.abs(Math.round(endYear)) + ' BC' : Math.round(endYear) + ' AD'}`);
+            console.log(`[Timeline] Category filter: ${selectedCategories.length} categories selected`);
+            
+            // Load events for this viewport with category filter
             const events = await window.timelineBackend.loadViewportEvents({
                 viewportStart: Math.abs(Math.round(startYear)),
                 viewportEnd: Math.abs(Math.round(endYear)),
                 isStartBC,
                 isEndBC,
-                limit: 1000
+                limit: 1000,
+                categories: selectedCategories.length > 0 ? selectedCategories : undefined
             });
             
             console.log(`[Timeline] Loaded ${events.length} events for viewport`);
@@ -348,6 +353,15 @@ function initializeTimeline() {
     window.timelineOrchestrator.subscribe('eventsUpdated', render);
     window.timelineOrchestrator.subscribe('laneAssignmentsUpdated', render);
     window.timelineOrchestrator.subscribe('categoryColorsUpdated', render);
+    
+    // Subscribe to category filter changes
+    window.timelineOrchestrator.subscribe('categoriesFilterChanged', (selectedCategories) => {
+        console.log('[Timeline] Category filter changed event received!');
+        console.log('[Timeline] Selected categories:', selectedCategories);
+        console.log('[Timeline] Reloading events for current viewport');
+        const currentDomain = currentTransform.rescaleX(xScale).domain();
+        reloadViewportEvents(currentDomain[0], currentDomain[1]);
+    });
 
     // Notify orchestrator of initial available lanes
     window.timelineOrchestrator.setAvailableLanes(availableLanes);

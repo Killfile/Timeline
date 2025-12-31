@@ -19,13 +19,21 @@ class TimelineBackend {
      * @param {boolean} params.isStartBC - Whether start is BC
      * @param {boolean} params.isEndBC - Whether end is BC
      * @param {number} params.limit - Maximum events to return
-     * @param {string} params.category - Optional category filter
+     * @param {string} params.category - Optional single category filter (legacy)
+     * @param {Array} params.categories - Optional array of categories to filter
      */
     async loadViewportEvents(params) {
         try {
             let url = `${this.apiUrl}/events?viewport_start=${params.viewportStart}&viewport_end=${params.viewportEnd}&viewport_is_bc_start=${params.isStartBC}&viewport_is_bc_end=${params.isEndBC}&limit=${params.limit}`;
             
-            if (params.category) {
+            // Handle multiple categories (if provided as array)
+            if (params.categories && Array.isArray(params.categories) && params.categories.length > 0) {
+                // Add each category as a separate query parameter
+                params.categories.forEach(cat => {
+                    url += `&category=${encodeURIComponent(cat)}`;
+                });
+            } else if (params.category) {
+                // Legacy: single category support
                 url += `&category=${encodeURIComponent(params.category)}`;
             }
             
@@ -62,7 +70,13 @@ class TimelineBackend {
             // Use the count endpoint with viewport params
             let url = `${this.apiUrl}/events/count?viewport_start=${params.viewportStart}&viewport_end=${params.viewportEnd}&viewport_is_bc_start=${params.isStartBC}&viewport_is_bc_end=${params.isEndBC}`;
             
-            if (params.category) {
+            // Handle multiple categories
+            if (params.categories && Array.isArray(params.categories) && params.categories.length > 0) {
+                params.categories.forEach(cat => {
+                    url += `&category=${encodeURIComponent(cat)}`;
+                });
+            } else if (params.category) {
+                // Legacy: single category support
                 url += `&category=${encodeURIComponent(params.category)}`;
             }
             
@@ -99,7 +113,8 @@ class TimelineBackend {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-            const categories = await response.json();
+            const data = await response.json();
+            const categories = data.categories || [];
             
             console.log('[Backend] Loaded', categories.length, 'categories');
             
