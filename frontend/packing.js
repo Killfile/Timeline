@@ -14,6 +14,10 @@ class TimelinePacking {
         // Subscribe to events and scale changes
         this.orchestrator.subscribe('events', (events) => this.packEvents(events));
         this.orchestrator.subscribe('scale', (scale) => this.repackWithScale(scale));
+        this.orchestrator.subscribe('availableLanesChanged', (lanes) => {
+            console.log('[Packing] Available lanes changed to', lanes, '- repacking');
+            this.repackWithScale(this.orchestrator.getScale());
+        });
     }
     
     /**

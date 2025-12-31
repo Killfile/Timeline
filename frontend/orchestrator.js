@@ -90,7 +90,14 @@ class TimelineOrchestrator {
     
     // Set available lanes (from renderer based on screen height)
     setAvailableLanes(count) {
+        const oldCount = this.availableLanes;
         this.availableLanes = count;
+        
+        // Notify if lanes changed (this will trigger repacking)
+        if (oldCount !== count) {
+            console.log(`[Orchestrator] Available lanes changed from ${oldCount} to ${count}`);
+            this.notify('availableLanesChanged', count);
+        }
     }
     
     // Get available lanes

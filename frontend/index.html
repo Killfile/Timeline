@@ -15,24 +15,15 @@
         </header>
 
         <div class="controls">
-            <div class="control-group">
-                <label for="search-input">Search Events:</label>
-                <input type="text" id="search-input" placeholder="Search historical events...">
-                <button id="search-btn">Search</button>
-            </div>
+            <input type="text" id="search-input" placeholder="🔍 Search events..." title="Search historical events">
             
-            <div class="control-group">
-                <label for="category-select">Filter by Category:</label>
-                <select id="category-select">
-                    <option value="">All Categories</option>
-                </select>
-            </div>
+            <select id="category-select" title="Filter by category">
+                <option value="">All Categories</option>
+            </select>
 
-            <div class="control-group">
-                <button id="reset-zoom-btn">Reset Zoom</button>
-                <button id="refresh-btn">Refresh Data</button>
-                <button id="fullscreen-btn">Fullscreen</button>
-            </div>
+            <button id="reset-zoom-btn" title="Reset Zoom" aria-label="Reset Zoom">⟲</button>
+            <button id="refresh-btn" title="Refresh Data" aria-label="Refresh Data">↻</button>
+            <button id="fullscreen-btn" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">⛶</button>
         </div>
 
         <div class="stats-panel">

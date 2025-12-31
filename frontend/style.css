@@ -8,14 +8,14 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
-    padding: 20px;
+    padding: 10px;
 }
 
 .container {
     max-width: 1400px;
     margin: 0 auto;
     background: white;
-    border-radius: 12px;
+    border-radius: 8px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
     overflow: hidden;
 }
@@ -23,72 +23,98 @@ body {
 header {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    padding: 30px;
+    padding: 15px 30px;
     text-align: center;
 }
 
 header h1 {
-    font-size: 2.5rem;
-    margin-bottom: 10px;
+    font-size: 1.8rem;
+    margin-bottom: 5px;
 }
 
 .subtitle {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     opacity: 0.9;
 }
 
 .controls {
-    padding: 20px;
-    background: #f5f5f5;
-    border-bottom: 2px solid #e0e0e0;
+    padding: 8px 20px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #e0e0e0;
     display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    align-items: flex-end;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: nowrap;
 }
 
+.controls input,
+.controls select,
+.controls button {
+    padding: 6px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    background: white;
+    transition: all 0.2s;
+}
+
+.controls input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+.controls input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.controls select {
+    min-width: 150px;
+    cursor: pointer;
+}
+
+.controls select:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.controls button {
+    background: white;
+    color: #667eea;
+    border: 1px solid #ddd;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 6px 12px;
+    min-width: 36px;
+}
+
+.controls button:hover {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
+}
+
+.controls button:active {
+    transform: scale(0.95);
+}
+
+/* Remove old control-group styles */
 .control-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+    display: none;
 }
 
 .control-group label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: #555;
-}
-
-.control-group input,
-.control-group select,
-.control-group button {
-    padding: 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 0.9rem;
-}
-
-.control-group input {
-    min-width: 250px;
-}
-
-.control-group button {
-    background: #667eea;
-    color: white;
-    border: none;
-    cursor: pointer;
-    font-weight: 600;
-    transition: background 0.3s;
-}
-
-.control-group button:hover {
-    background: #5568d3;
+    display: none;
 }
 
 .stats-panel {
     display: flex;
-    padding: 20px;
-    gap: 20px;
+    padding: 10px 20px;
+    gap: 15px;
     background: #fafafa;
     border-bottom: 1px solid #e0e0e0;
 }
@@ -98,22 +124,22 @@ header h1 {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 15px;
+    padding: 8px 10px;
     background: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .stat-label {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: #666;
-    margin-bottom: 5px;
+    margin-bottom: 3px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
 
 .stat-value {
-    font-size: 1.5rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: #667eea;
 }
@@ -121,7 +147,8 @@ header h1 {
 #timeline-container {
     position: relative;
     width: 100%;
-    height: 250px;  /* Fixed height: 10 lanes * 20px + 50px for axis */
+    /* Height will be set dynamically by JavaScript based on available space */
+    min-height: 250px;  /* Minimum: 10 lanes * 20px + 50px for axis */
     background: #fff;
     overflow: hidden;
 }
@@ -465,25 +492,31 @@ header h1 {
 }
 
 .instructions {
-    padding: 30px;
+    padding: 15px 20px;
     background: #f9f9f9;
     border-top: 1px solid #e0e0e0;
+    font-size: 0.8rem;
 }
 
 .instructions h3 {
     color: #667eea;
-    margin-bottom: 15px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
 }
 
 .instructions ul {
     list-style: none;
     padding-left: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
 }
 
 .instructions li {
-    padding: 8px 0;
-    padding-left: 25px;
+    padding: 0;
+    padding-left: 15px;
     position: relative;
+    flex: 0 0 auto;
 }
 
 .instructions li:before {
@@ -542,4 +575,54 @@ body.fullscreen #timeline-container {
     height: 100vh;
     margin: 0;
     padding: 0;
+}
+
+/* Responsive adjustments for compact toolbar */
+@media (max-width: 768px) {
+    .controls {
+        flex-wrap: wrap;
+    }
+    
+    .controls input {
+        min-width: 150px;
+        flex: 1 1 100%;
+    }
+    
+    .controls select {
+        min-width: 100px;
+        flex: 1;
+    }
+    
+    .stats-panel {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    
+    .stat-box {
+        flex: 1 1 calc(50% - 5px);
+        min-width: 120px;
+    }
+    
+    .instructions ul {
+        flex-direction: column;
+        gap: 5px;
+    }
+}
+
+@media (max-width: 480px) {
+    header h1 {
+        font-size: 1.4rem;
+    }
+    
+    .subtitle {
+        font-size: 0.85rem;
+    }
+    
+    .stat-label {
+        font-size: 0.65rem;
+    }
+    
+    .stat-value {
+        font-size: 1rem;
+    }
 }

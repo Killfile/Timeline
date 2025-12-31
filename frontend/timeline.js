@@ -14,7 +14,8 @@
 // Configuration constants
 const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`;
 const LANE_HEIGHT = 20;
-const VISIBLE_LANES = 10;  // Fixed number of lanes always visible
+const AXIS_HEIGHT = 50; // Height reserved for X-axis
+const MIN_LANES = 10;   // Minimum number of lanes
 const CHAR_WIDTH = 8;
 const PADDING = 8;
 
@@ -26,6 +27,62 @@ let tooltip = null;  // Tooltip for hover preview
 // Debounce timer for viewport event reloading
 let reloadTimer = null;
 const RELOAD_DEBOUNCE_MS = 300;
+
+// Debounce timer for window resize
+let resizeTimer = null;
+const RESIZE_DEBOUNCE_MS = 200;
+
+/**
+ * Calculate the number of lanes that fit in the available window space
+ * @returns {number} Number of lanes that can fit
+ */
+function calculateAvailableLanes() {
+    const container = document.getElementById('timeline-container');
+    if (!container) return MIN_LANES;
+    
+    // Get the bottom of the container element
+    const containerRect = container.getBoundingClientRect();
+    
+    // Get window height
+    const windowHeight = window.innerHeight;
+    
+    // Calculate available height for timeline (from container top to window bottom, minus some padding)
+    const availableHeight = windowHeight - containerRect.top - 20; // 20px padding at bottom
+    
+    // Calculate how many lanes fit, reserving space for the axis
+    const heightForLanes = Math.max(availableHeight - AXIS_HEIGHT, MIN_LANES * LANE_HEIGHT);
+    const lanes = Math.max(Math.floor(heightForLanes / LANE_HEIGHT), MIN_LANES);
+    
+    console.log(`[Timeline] Calculated ${lanes} available lanes (available height: ${availableHeight}px)`);
+    
+    return lanes;
+}
+
+/**
+ * Update timeline height and notify orchestrator of lane count change
+ */
+function updateTimelineHeight() {
+    const availableLanes = calculateAvailableLanes();
+    const height = availableLanes * LANE_HEIGHT + AXIS_HEIGHT;
+    
+    // Update container height
+    const container = d3.select('#timeline-container');
+    container.style('height', `${height}px`);
+    
+    // Update SVG height if it exists
+    if (svg) {
+        svg.attr('height', height);
+        
+        // Update axis position
+        svg.select('.x-axis')
+            .attr('transform', `translate(0, ${availableLanes * LANE_HEIGHT})`);
+    }
+    
+    // Notify orchestrator of available lanes
+    window.timelineOrchestrator.setAvailableLanes(availableLanes);
+    
+    console.log(`[Timeline] Updated timeline height to ${height}px for ${availableLanes} lanes`);
+}
 
 /**
  * Convert event year/BC flag to numeric scale value
@@ -112,7 +169,13 @@ function reloadViewportEvents(startYear, endYear) {
 function initializeTimeline() {
     const container = d3.select('#timeline');
     const width = container.node().clientWidth;
-    const height = VISIBLE_LANES * LANE_HEIGHT + 50; // Fixed height based on lanes + axis space
+    
+    // Calculate initial height based on available space
+    const availableLanes = calculateAvailableLanes();
+    const height = availableLanes * LANE_HEIGHT + AXIS_HEIGHT;
+    
+    // Set container height
+    d3.select('#timeline-container').style('height', `${height}px`);
 
     // Create SVG
     svg = container.append('svg')
@@ -130,7 +193,7 @@ function initializeTimeline() {
     // Create axis group (will be updated on zoom)
     const xAxisGroup = svg.append('g')
         .attr('class', 'x-axis')
-        .attr('transform', `translate(0, ${VISIBLE_LANES * LANE_HEIGHT})`);
+        .attr('transform', `translate(0, ${availableLanes * LANE_HEIGHT})`);
 
     // Initialize x-scale as LINEAR (not time scale!)
     // Use numeric years (negative for BC, positive for AD)
@@ -173,14 +236,14 @@ function initializeTimeline() {
     const laneGuides = svg.append('g')
         .attr('class', 'lane-guides');
     
-    for (let i = 0; i <= VISIBLE_LANES; i++) {
+    for (let i = 0; i <= availableLanes; i++) {
         laneGuides.append('line')
             .attr('x1', 0)
             .attr('x2', width)
             .attr('y1', i * LANE_HEIGHT)
             .attr('y2', i * LANE_HEIGHT)
             .attr('stroke', '#333')
-            .attr('stroke-width', i === 0 || i === VISIBLE_LANES ? 1 : 0.5)
+            .attr('stroke-width', i === 0 || i === availableLanes ? 1 : 0.5)
             .attr('opacity', 0.2);
     }
 
@@ -206,6 +269,25 @@ function initializeTimeline() {
     window.timelineOrchestrator.subscribe('eventsUpdated', render);
     window.timelineOrchestrator.subscribe('laneAssignmentsUpdated', render);
     window.timelineOrchestrator.subscribe('categoryColorsUpdated', render);
+
+    // Notify orchestrator of initial available lanes
+    window.timelineOrchestrator.setAvailableLanes(availableLanes);
+    
+    // Set up window resize handler with debouncing
+    window.addEventListener('resize', () => {
+        if (resizeTimer) {
+            clearTimeout(resizeTimer);
+        }
+        resizeTimer = setTimeout(() => {
+            updateTimelineHeight();
+            // Trigger repack after height change
+            const currentEvents = window.timelineOrchestrator.getEvents();
+            const currentScale = window.timelineOrchestrator.getScale();
+            if (currentEvents.length > 0 && currentScale) {
+                window.timelinePacking.repackWithScale(currentScale);
+            }
+        }, RESIZE_DEBOUNCE_MS);
+    });
 
     // Initial render
     render();
