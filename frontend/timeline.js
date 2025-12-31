@@ -18,6 +18,8 @@ const AXIS_HEIGHT = 50; // Height reserved for X-axis
 const MIN_LANES = 10;   // Minimum number of lanes
 const CHAR_WIDTH = 8;
 const PADDING = 8;
+const MAX_LABELS = 50; // Maximum number of labels to show at once
+const MIN_LABEL_WIDTH = 20; // Minimum pixel width for a label
 
 // D3 selection references
 let svg, xScale, xAxis, zoom;
@@ -348,6 +350,34 @@ function hasSpan(d) {
 function applyPositions(scale) {
     const groups = svg.selectAll('.event-group');
     
+    // First pass: collect all events with their widths and weights
+    const eventWidths = [];
+    groups.each(function(d) {
+        const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+        const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
+        const sx = startYear !== null ? scale(startYear) : 0;
+        const ex = endYear !== null ? scale(endYear) : sx;
+        const width = Math.abs(ex - sx);
+        
+        eventWidths.push({
+            id: d.id,
+            width: width,
+            weight: d.weight || 0,
+            hasSpan: hasSpan(d)
+        });
+    });
+    
+    // Filter to events wide enough for labels and sort by weight
+    const labelCandidates = eventWidths
+        .filter(e => e.hasSpan && e.width > MIN_LABEL_WIDTH)
+        .sort((a, b) => b.weight - a.weight) // Sort by weight descending
+        .slice(0, MAX_LABELS) // Take top N
+        .map(e => e.id);
+    
+    const shouldShowLabel = new Set(labelCandidates);
+    
+    console.log(`[Timeline] Label selection: ${eventWidths.filter(e => e.hasSpan && e.width > MIN_LABEL_WIDTH).length} candidates, showing ${labelCandidates.length} labels`);
+    
     // Position each group
     groups.attr('transform', d => {
         const lane = window.timelineOrchestrator.getLaneForEvent(d.id);
@@ -396,14 +426,20 @@ function applyPositions(scale) {
             return (sx + ex) / 2; // Span events: label at bar center
         })
         .attr('visibility', d => {
-            // Show labels only for wide enough bars
-            if (!hasSpan(d)) return 'visible'; // Always show for moments
+            // Always show labels for moment events
+            if (!hasSpan(d)) return 'visible';
+            
+            // For span events, check if wide enough AND in top MAX_LABELS by weight
             const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
             const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
             const sx = startYear !== null ? scale(startYear) : 0;
             const ex = endYear !== null ? scale(endYear) : sx;
             const width = Math.abs(ex - sx);
-            return width > 20 ? 'visible' : 'hidden'; // Lower threshold from 30 to 20
+            
+            if (width <= MIN_LABEL_WIDTH) return 'hidden';
+            
+            // Check if this event made the cut for labels
+            return shouldShowLabel.has(d.id) ? 'visible' : 'hidden';
         });
 }
 
