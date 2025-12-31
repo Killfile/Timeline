@@ -278,6 +278,79 @@ def get_events(
         conn.close()
 
 
+@app.get("/events/count")
+def get_events_count(
+    start_year: Optional[int] = Query(None, description="Filter events starting from this year"),
+    end_year: Optional[int] = Query(None, description="Filter events up to this year"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    viewport_start: Optional[int] = Query(None, description="Viewport start year"),
+    viewport_end: Optional[int] = Query(None, description="Viewport end year"),
+    viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
+    viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
+):
+    """Get count of events matching filters. Used to populate 'Events in Scope' stat.
+    
+    When viewport params are provided, this returns the total count of events
+    that fall within the viewport range (without limit).
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Build count query
+        query = "SELECT COUNT(*) as count FROM historical_events WHERE 1=1"
+        params = []
+        
+        # If viewport is specified, filter to events overlapping viewport
+        use_viewport_mode = (
+            viewport_start is not None
+            and viewport_end is not None
+            and viewport_is_bc_start is not None
+            and viewport_is_bc_end is not None
+        )
+        
+        if use_viewport_mode:
+            # Convert viewport bounds to numeric years (negative for BC)
+            vs = -viewport_start if viewport_is_bc_start else viewport_start
+            ve = -viewport_end if viewport_is_bc_end else viewport_end
+            
+            # Ensure vs < ve
+            if vs > ve:
+                vs, ve = ve, vs
+            
+            # Filter: event overlaps viewport if event_end >= viewport_start AND event_start <= viewport_end
+            # Using numeric representation: negative for BC, positive for AD
+            query += """ AND (
+                CASE WHEN is_bc_end THEN -end_year ELSE end_year END >= %s
+                OR (end_year IS NULL AND CASE WHEN is_bc_start THEN -start_year ELSE start_year END >= %s)
+            ) AND (
+                CASE WHEN is_bc_start THEN -start_year ELSE start_year END <= %s
+            )"""
+            params.extend([vs, vs, ve])
+        else:
+            # Use simple year filters if provided
+            if start_year is not None:
+                query += " AND start_year >= %s"
+                params.append(start_year)
+            
+            if end_year is not None:
+                query += " AND (end_year <= %s OR end_year IS NULL)"
+                params.append(end_year)
+        
+        if category:
+            query += " AND category = %s"
+            params.append(category)
+        
+        cursor.execute(query, params)
+        result = cursor.fetchone()
+        
+        return {"count": result['count']}
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/events/{event_id}", response_model=HistoricalEvent)
 def get_event(event_id: int):
     """Get a specific historical event by ID."""

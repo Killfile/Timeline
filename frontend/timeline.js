@@ -31,11 +31,37 @@ const RELOAD_DEBOUNCE_MS = 300;
  * Convert event year/BC flag to numeric scale value
  * @param {number} year - The year value from the API (always positive)
  * @param {boolean} isBC - Whether this is a BC date
+ * @param {number} month - Optional month (1-12)
+ * @param {number} day - Optional day (1-31)
  * @returns {number} Scale year (negative for BC, positive for AD)
  */
-function toYearNumber(year, isBc) {
+function toYearNumber(year, isBc, month = null, day = null) {
     if (year === null || year === undefined) return null;
-    return isBc ? -year : year;
+    let fractionalYear = isBc ? -year : year;
+    
+    // Add fractional year based on month/day if available
+    if (month !== null && month !== undefined) {
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let dayOfYear = 0;
+        
+        // Add days from previous months
+        for (let i = 0; i < month - 1; i++) {
+            dayOfYear += daysInMonth[i];
+        }
+        
+        // Add days in current month
+        if (day !== null && day !== undefined) {
+            dayOfYear += day;
+        } else {
+            // If no day specified, use middle of month
+            dayOfYear += Math.floor(daysInMonth[month - 1] / 2);
+        }
+        
+        const yearFraction = dayOfYear / 365.0;
+        fractionalYear += yearFraction;
+    }
+    
+    return fractionalYear;
 }
 
 /**
@@ -68,16 +94,10 @@ function reloadViewportEvents(startYear, endYear) {
             
             console.log(`[Timeline] Loaded ${events.length} events for viewport`);
             
-            // Update eventsInScope stat to reflect current viewport
-            const stats = window.timelineOrchestrator.getStats();
-            window.timelineOrchestrator.updateStats({
-                ...stats,
-                eventsInScope: events.length
-            });
-            
             // Events are already set in orchestrator by backend
             // The packing module will automatically repack using the current transformed scale
             // because backend.setEvents() triggers the 'events' notification
+            // Note: eventsInScope will be updated by render() after filtering to visible events
             
         } catch (error) {
             console.error('[Timeline] Error reloading viewport events:', error);
@@ -233,14 +253,6 @@ function handleZoom(event) {
 }
 
 /**
- * Convert event year/BC flag to numeric scale value
- */
-function toYearNumber(year, isBc) {
-    if (year === null || year === undefined) return null;
-    return isBc ? -year : year;
-}
-
-/**
  * Check if event has a span (not just a moment)
  */
 function hasSpan(d) {
@@ -266,7 +278,7 @@ function applyPositions(scale) {
             return `translate(0, ${y})`;
         } else {
             // Moment events: group at (x, y), dot at (0, 0)
-            const startYear = toYearNumber(d.start_year, d.is_bc_start);
+            const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
             const x = startYear !== null ? scale(startYear) : 0;
             return `translate(${x}, ${y})`;
         }
@@ -276,16 +288,16 @@ function applyPositions(scale) {
     groups.select('rect.timeline-span')
         .attr('x', d => {
             if (!hasSpan(d)) return 0;
-            const startYear = toYearNumber(d.start_year, d.is_bc_start);
-            const endYear = toYearNumber(d.end_year, d.is_bc_end);
+            const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
             const sx = startYear !== null ? scale(startYear) : 0;
             const ex = endYear !== null ? scale(endYear) : sx;
             return Math.min(sx, ex);
         })
         .attr('width', d => {
             if (!hasSpan(d)) return 0;
-            const startYear = toYearNumber(d.start_year, d.is_bc_start);
-            const endYear = toYearNumber(d.end_year, d.is_bc_end);
+            const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
             const sx = startYear !== null ? scale(startYear) : 0;
             const ex = endYear !== null ? scale(endYear) : sx;
             return Math.max(3, Math.abs(ex - sx));
@@ -295,8 +307,8 @@ function applyPositions(scale) {
     groups.select('text.event-label')
         .attr('x', d => {
             if (!hasSpan(d)) return 0; // Moment events: label at group center
-            const startYear = toYearNumber(d.start_year, d.is_bc_start);
-            const endYear = toYearNumber(d.end_year, d.is_bc_end);
+            const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
             const sx = startYear !== null ? scale(startYear) : 0;
             const ex = endYear !== null ? scale(endYear) : sx;
             return (sx + ex) / 2; // Span events: label at bar center
@@ -304,8 +316,8 @@ function applyPositions(scale) {
         .attr('visibility', d => {
             // Show labels only for wide enough bars
             if (!hasSpan(d)) return 'visible'; // Always show for moments
-            const startYear = toYearNumber(d.start_year, d.is_bc_start);
-            const endYear = toYearNumber(d.end_year, d.is_bc_end);
+            const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+            const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
             const sx = startYear !== null ? scale(startYear) : 0;
             const ex = endYear !== null ? scale(endYear) : sx;
             const width = Math.abs(ex - sx);
@@ -336,8 +348,8 @@ function render() {
     const eventData = events
         .filter(event => {
             // Check if event overlaps with viewport
-            const startYear = toYearNumber(event.start_year, event.is_bc_start);
-            const endYear = toYearNumber(event.end_year, event.is_bc_end);
+            const startYear = toYearNumber(event.start_year, event.is_bc_start, event.start_month, event.start_day);
+            const endYear = toYearNumber(event.end_year, event.is_bc_end, event.end_month, event.end_day);
             if (startYear === null) return false;
             const eventEndYear = endYear !== null ? endYear : startYear;
             return eventEndYear >= viewportStart && startYear <= viewportEnd;
@@ -414,12 +426,13 @@ function render() {
     // Apply positions using current transform
     applyPositions(currentScale);
 
-    // Update placed events count
-    window.timelineOrchestrator.setState({
-        stats: {
-            ...state.stats,
-            eventsPlaced: eventData.length
-        }
+    // Update eventsPlaced stat (events actually rendered)
+    // Note: eventsInScope is updated by backend when loading viewport events
+    const currentStats = window.timelineOrchestrator.getStats();
+    window.timelineOrchestrator.updateStats({
+        ...currentStats,
+        loadedEvents: events.length,      // Total events loaded from API
+        eventsPlaced: eventData.length    // Events actually rendered (after filtering)
     });
 }
 
@@ -496,8 +509,8 @@ function handleEventClick(event, d) {
     // Get placement data
     const lane = window.timelineOrchestrator.getLaneForEvent(d.id);
     const currentScale = window.timelineOrchestrator.getScale();
-    const startYearNum = toYearNumber(d.start_year, d.is_bc_start);
-    const endYearNum = toYearNumber(d.end_year, d.is_bc_end);
+    const startYearNum = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
+    const endYearNum = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
     const pixelX = currentScale ? currentScale(startYearNum) : 'N/A';
     const pixelWidth = (currentScale && endYearNum) 
         ? Math.abs(currentScale(endYearNum) - currentScale(startYearNum))

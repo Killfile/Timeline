@@ -43,10 +43,49 @@ class TimelineBackend {
             // Update orchestrator with new events
             this.orchestrator.setEvents(events);
             
+            // Also fetch the total count of events in this viewport
+            await this.updateViewportCount(params);
+            
             return events;
         } catch (error) {
             console.error('[Backend] Error loading viewport events:', error);
             throw error;
+        }
+    }
+    
+    /**
+     * Update the eventsInScope count based on viewport
+     * @param {Object} params - Viewport parameters
+     */
+    async updateViewportCount(params) {
+        try {
+            // Use the count endpoint with viewport params
+            let url = `${this.apiUrl}/events/count?viewport_start=${params.viewportStart}&viewport_end=${params.viewportEnd}&viewport_is_bc_start=${params.isStartBC}&viewport_is_bc_end=${params.isEndBC}`;
+            
+            if (params.category) {
+                url += `&category=${encodeURIComponent(params.category)}`;
+            }
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            
+            console.log('[Backend] Events in viewport:', data.count);
+            
+            // Update eventsInScope stat
+            const currentStats = this.orchestrator.getStats();
+            this.orchestrator.updateStats({
+                ...currentStats,
+                eventsInScope: data.count
+            });
+            
+            return data.count;
+        } catch (error) {
+            console.error('[Backend] Error fetching viewport count:', error);
+            // Don't throw - this is a nice-to-have stat
         }
     }
     
