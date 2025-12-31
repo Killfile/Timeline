@@ -219,6 +219,35 @@ class CategoryFilter {
         this.updateCount();
         this.notifyFilterChange();
     }
+    
+    /**
+     * Toggle a single category on/off
+     * Returns the new state (true if enabled, false if disabled)
+     */
+    toggleCategory(category) {
+        const isCurrentlySelected = this.selectedCategories.has(category);
+        
+        if (isCurrentlySelected) {
+            this.selectedCategories.delete(category);
+        } else {
+            this.selectedCategories.add(category);
+        }
+        
+        // Update UI
+        this.renderCategoryList();
+        this.updateSelectAllState();
+        this.updateCount();
+        this.notifyFilterChange();
+        
+        return !isCurrentlySelected;
+    }
+    
+    /**
+     * Check if a category is currently selected
+     */
+    isCategorySelected(category) {
+        return this.selectedCategories.has(category);
+    }
 }
 
 // Export to global scope

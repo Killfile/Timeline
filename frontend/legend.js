@@ -13,6 +13,11 @@ class TimelineLegend {
         
         // Subscribe to events changes to update categories
         this.orchestrator.subscribe('events', (events) => this.updateFromEvents(events));
+        
+        // Subscribe to category filter changes to update visual state
+        this.orchestrator.subscribe('categoriesFilterChanged', () => {
+            this.updateLegendDisplay();
+        });
     }
     
     /**
@@ -63,10 +68,34 @@ class TimelineLegend {
             
             const item = document.createElement('div');
             item.className = 'legend-item';
+            item.dataset.category = category;
+            
+            // Check if category is currently selected
+            const isSelected = window.timelineCategoryFilter ? 
+                window.timelineCategoryFilter.isCategorySelected(category) : true;
+            
+            if (!isSelected) {
+                item.classList.add('legend-item-disabled');
+            }
+            
             item.innerHTML = `
                 <span class="legend-color" style="background-color: ${color}"></span>
                 <span class="legend-label">${category}</span>
             `;
+            
+            // Add click handler to toggle category
+            item.style.cursor = 'pointer';
+            item.addEventListener('click', () => {
+                if (window.timelineCategoryFilter) {
+                    const newState = window.timelineCategoryFilter.toggleCategory(category);
+                    // Update visual state
+                    if (newState) {
+                        item.classList.remove('legend-item-disabled');
+                    } else {
+                        item.classList.add('legend-item-disabled');
+                    }
+                }
+            });
             
             legendContainer.appendChild(item);
         });
