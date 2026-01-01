@@ -24,6 +24,8 @@ const MIN_LABEL_WIDTH = 20; // Minimum pixel width for a label
 // D3 selection references
 let svg, xScale, xAxis, zoom;
 let currentTransform = d3.zoomIdentity;
+let initialTransform = d3.zoomIdentity; // Store initial transform for reset zoom
+let initialDomain = null; // Store initial domain for reset zoom
 let tooltip = null;  // Tooltip for hover preview
 
 // Debounce timer for viewport event reloading
@@ -300,14 +302,17 @@ function initializeTimeline() {
     // Store scale in orchestrator so packing module can use it
     window.timelineOrchestrator.setScale(xScale);
 
+    // Store initial state for reset zoom functionality
+    initialDomain = xScale.domain();
+    initialTransform = d3.zoomIdentity;
+
     // Set initial time range in stats
-    const initialDomain = xScale.domain();
-    const initialStats = window.timelineOrchestrator.getStats();
-    initialStats.timeRange = {
+    const stats = window.timelineOrchestrator.getStats();
+    stats.timeRange = {
         start: initialDomain[0],
         end: initialDomain[1]
     };
-    window.timelineOrchestrator.updateStats(initialStats);
+    window.timelineOrchestrator.updateStats(stats);
 
     // Setup zoom behavior
     zoom = d3.zoom()
@@ -387,8 +392,81 @@ function initializeTimeline() {
 }
 
 /**
+ * Reset zoom to initial view
+ */
+function resetZoom() {
+    if (!svg || !zoom || !initialTransform) {
+        console.warn('[Timeline] Cannot reset zoom - components not initialized');
+        return;
+    }
+    
+    // Apply the initial transform (this triggers handleZoom)
+    svg.transition()
+        .duration(750)
+        .call(zoom.transform, initialTransform);
+}
+
+/**
+ * Toggle fullscreen mode
+ */
+function toggleFullscreen() {
+    const container = document.getElementById('timeline-container');
+    if (!container) {
+        console.warn('[Timeline] Cannot toggle fullscreen - container not found');
+        return;
+    }
+    
+    if (!document.fullscreenElement) {
+        // Enter fullscreen
+        container.requestFullscreen().catch(err => {
+            console.error('[Timeline] Error entering fullscreen:', err);
+        });
+    } else {
+        // Exit fullscreen
+        document.exitFullscreen();
+    }
+}
+
+/**
+ * Handle fullscreen changes - recalculate lanes when entering/exiting
+ */
+function handleFullscreenChange() {
+    const container = document.getElementById('timeline-container');
+    if (!container) return;
+    
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    
+    if (document.fullscreenElement) {
+        // Entered fullscreen
+        console.log('[Timeline] Entered fullscreen mode');
+        if (fullscreenBtn) {
+            fullscreenBtn.textContent = '⛶'; // Could change icon if desired
+            fullscreenBtn.title = 'Exit Fullscreen';
+        }
+    } else {
+        // Exited fullscreen
+        console.log('[Timeline] Exited fullscreen mode');
+        if (fullscreenBtn) {
+            fullscreenBtn.textContent = '⛶';
+            fullscreenBtn.title = 'Toggle Fullscreen';
+        }
+    }
+    
+    // Recalculate available lanes based on new height
+    updateTimelineHeight();
+    
+    // Trigger repack with current events
+    const currentEvents = window.timelineOrchestrator.getEvents();
+    const currentScale = window.timelineOrchestrator.getScale();
+    if (currentEvents.length > 0 && currentScale) {
+        console.log('[Timeline] Repacking events after fullscreen change');
+        window.timelinePacking.repackWithScale(currentScale);
+    }
+}
+
+/**
  * Handle zoom/pan interactions
- * Updates the viewport state and triggers lane recalculation
+``` * Updates the viewport state and triggers lane recalculation
  */
 function handleZoom(event) {
     currentTransform = event.transform;
@@ -897,6 +975,21 @@ document.addEventListener('DOMContentLoaded', () => {
  * Initialize when DOM is ready
  */
 document.addEventListener('DOMContentLoaded', () => {
+    // Set up reset zoom button
+    const resetZoomBtn = document.getElementById('reset-zoom-btn');
+    if (resetZoomBtn) {
+        resetZoomBtn.addEventListener('click', resetZoom);
+    }
+    
+    // Set up fullscreen button
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+    }
+    
+    // Listen for fullscreen changes (triggered by button, escape key, or browser UI)
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    
     // Wait a tick to ensure orchestrator is ready
     setTimeout(initializeTimeline, 0);
 });

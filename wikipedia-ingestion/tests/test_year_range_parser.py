@@ -117,6 +117,11 @@ class TestYearRangeParser:
         """Test parsing when range is embedded in longer text."""
         result = self.parser.parse("War from 490 BC - 479 BC ended", 490, True)
         assert result is not None
+
+    def test_embeded_in_longer_text_prefixed_by_an_octothorpe(self):
+        """Test parsing when range is prefixed by an octothorpe."""
+        result = self.parser.parse("A USAF F-4C Phantom #63-7599 is shot down by a North Vietnamese SAM-2 45 miles (72 km) northeast of Hanoi , the first loss of a U.S. aircraft to a Vietnamese surface-to-air missile in the Vietnam War. [ 31 ] ", 490, True)
+        assert result is None
     
     @pytest.mark.parametrize("text,expected_bc", [
         ("490 BC - 479", True),
