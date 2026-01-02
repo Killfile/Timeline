@@ -748,16 +748,16 @@ function render() {
     const groupsMerged = eventGroups.merge(groupsEnter);
 
     // Update colors and visibility
-    // Use Wikipedia category first, fallback to LLM category, then legacy category field
+    // Use LLM category first (AI-enriched), fallback to Wikipedia category, then legacy category field
     groupsMerged.select('circle.timeline-event')
         .attr('fill', d => {
-            // Try Wikipedia category first
-            const wikiCat = d.categories?.find(c => !c.llm_source);
-            if (wikiCat) return categoryColors.get(wikiCat.category) || '#999';
-            
-            // Fallback to LLM category
+            // Try LLM category first (prioritize AI enrichment)
             const llmCat = d.categories?.find(c => c.llm_source);
             if (llmCat) return categoryColors.get(llmCat.category) || '#999';
+            
+            // Fallback to Wikipedia category
+            const wikiCat = d.categories?.find(c => !c.llm_source);
+            if (wikiCat) return categoryColors.get(wikiCat.category) || '#999';
             
             // Final fallback to legacy category field
             return categoryColors.get(d.category) || '#999';
@@ -766,13 +766,13 @@ function render() {
 
     groupsMerged.select('rect.timeline-span')
         .attr('fill', d => {
-            // Try Wikipedia category first
-            const wikiCat = d.categories?.find(c => !c.llm_source);
-            if (wikiCat) return categoryColors.get(wikiCat.category) || '#999';
-            
-            // Fallback to LLM category
+            // Try LLM category first (prioritize AI enrichment)
             const llmCat = d.categories?.find(c => c.llm_source);
             if (llmCat) return categoryColors.get(llmCat.category) || '#999';
+            
+            // Fallback to Wikipedia category
+            const wikiCat = d.categories?.find(c => !c.llm_source);
+            if (wikiCat) return categoryColors.get(wikiCat.category) || '#999';
             
             // Final fallback to legacy category field
             return categoryColors.get(d.category) || '#999';

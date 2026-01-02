@@ -10,6 +10,7 @@ class TimelineLegend {
         this.orchestrator = orchestrator;
         this.colorScale = d3.scaleOrdinal(d3.schemeCategory10);
         this.categories = new Set();
+        this.categoryHasLLM = new Map(); // Track which categories have LLM enrichment
         
         // Subscribe to events changes to update categories
         this.orchestrator.subscribe('events', (events) => this.updateFromEvents(events));
@@ -27,12 +28,19 @@ class TimelineLegend {
         // Extract unique categories from events
         // Now considers both legacy category field AND enrichment categories
         const newCategories = new Set();
+        const categoryHasLLM = new Map();
+        
         events.forEach(event => {
             // Add categories from enrichments array (both Wikipedia and LLM)
             if (event.categories && Array.isArray(event.categories)) {
                 event.categories.forEach(catEnrichment => {
                     if (catEnrichment.category) {
                         newCategories.add(catEnrichment.category);
+                        
+                        // Track if this category has LLM enrichment
+                        if (catEnrichment.llm_source) {
+                            categoryHasLLM.set(catEnrichment.category, true);
+                        }
                     }
                 });
             }
@@ -40,6 +48,10 @@ class TimelineLegend {
             // Also add legacy category field for backwards compatibility
             if (event.category) {
                 newCategories.add(event.category);
+                // Legacy categories don't have LLM enrichment
+                if (!categoryHasLLM.has(event.category)) {
+                    categoryHasLLM.set(event.category, false);
+                }
             }
         });
         
@@ -50,6 +62,7 @@ class TimelineLegend {
         });
         
         this.categories = newCategories;
+        this.categoryHasLLM = categoryHasLLM;
         
         // Push to orchestrator
         this.orchestrator.setCategoryColors(colorMap);
@@ -70,8 +83,18 @@ class TimelineLegend {
         // Clear existing legend items
         legendContainer.innerHTML = '';
         
-        // Sort categories alphabetically
-        const sortedCategories = Array.from(this.categories).sort();
+        // Sort categories: LLM-enriched first, then alphabetically within each group
+        const sortedCategories = Array.from(this.categories).sort((a, b) => {
+            const aHasLLM = this.categoryHasLLM.get(a) || false;
+            const bHasLLM = this.categoryHasLLM.get(b) || false;
+            
+            // If one has LLM and the other doesn't, LLM comes first
+            if (aHasLLM && !bHasLLM) return -1;
+            if (!aHasLLM && bHasLLM) return 1;
+            
+            // Otherwise, sort alphabetically
+            return a.localeCompare(b);
+        });
         
         // Create legend items
         sortedCategories.forEach(category => {

@@ -18,6 +18,7 @@ Environment Variables:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
@@ -25,7 +26,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 import psycopg2
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +65,8 @@ STANDARD_CATEGORIES = [
     "Natural Disasters",
     "Exploration & Discovery",
     "Social Movements",
+    "Sports",
+    "Education",
     "Other"
 ]
 
@@ -137,7 +140,23 @@ def categorize_events_with_llm(
     events: List[Dict[str, Any]], 
     model: str = "gpt-4o-mini"
 ) -> List[Dict[str, Any]]:
-    """Categorize events using OpenAI API.
+    """Categorize events using OpenAI API (synchronous wrapper).
+    
+    Args:
+        events: List of event dictionaries
+        model: OpenAI model to use
+        
+    Returns:
+        List of categorization results with event_key, categories, confidence
+    """
+    return asyncio.run(categorize_events_with_llm_async(events, model))
+
+
+async def categorize_events_with_llm_async(
+    events: List[Dict[str, Any]], 
+    model: str = "gpt-4o-mini"
+) -> List[Dict[str, Any]]:
+    """Categorize events using OpenAI API (async).
     
     Args:
         events: List of event dictionaries
@@ -150,18 +169,18 @@ def categorize_events_with_llm(
     if not api_key:
         raise ValueError("OPENAI_API_KEY or OPEN_AI_API_KEY environment variable required")
     
-    client = OpenAI(api_key=api_key)
-    
-    # Build prompt
-    event_list = "\n\n".join([
-        f"Event {i+1}:\n"
-        f"Title: {event['title']}\n"
-        f"Date: {event['date_range']}\n"
-        f"Description: {event['description'][:200]}"  # Truncate long descriptions
-        for i, event in enumerate(events)
-    ])
-    
-    system_prompt = f"""You are a historian categorizing historical events.
+    # Use async context manager to ensure proper cleanup
+    async with AsyncOpenAI(api_key=api_key) as client:
+        # Build prompt
+        event_list = "\n\n".join([
+            f"Event {i+1}:\n"
+            f"Title: {event['title']}\n"
+            f"Date: {event['date_range']}\n"
+            f"Description: {event['description'][:200]}"  # Truncate long descriptions
+            for i, event in enumerate(events)
+        ])
+        
+        system_prompt = f"""You are a historian categorizing historical events.
 
 For each event, assign ONE OR MORE categories from this list:
 {', '.join(STANDARD_CATEGORIES)}
@@ -181,12 +200,11 @@ Respond in JSON format:
   ]
 }}"""
 
-    user_prompt = f"Categorize these historical events:\n\n{event_list}"
-    
-    try:
+        user_prompt = f"Categorize these historical events:\n\n{event_list}"
+        
         log_info(f"Calling {model} to categorize {len(events)} events...")
         
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -213,10 +231,6 @@ Respond in JSON format:
                 })
         
         return results
-        
-    except Exception as e:
-        log_error(f"LLM categorization failed: {e}")
-        raise
 
 
 def store_llm_categories(
@@ -280,8 +294,52 @@ def store_llm_categories(
         cursor.close()
 
 
+async def categorize_batch_parallel(
+    events: List[Dict[str, Any]],
+    page_size: int,
+    model: str = "gpt-4o-mini"
+) -> List[Dict[str, Any]]:
+    """Categorize a batch of events in parallel by splitting into pages.
+    
+    Args:
+        events: List of event dictionaries
+        page_size: Number of events per API call
+        model: OpenAI model to use
+        
+    Returns:
+        Combined list of categorization results from all pages
+    """
+    # Split events into pages
+    pages = [events[i:i + page_size] for i in range(0, len(events), page_size)]
+    
+    log_info(f"Dispatching {len(pages)} parallel requests ({page_size} events each)...")
+    
+    # Create async tasks for each page
+    tasks = [
+        categorize_events_with_llm_async(page, model)
+        for page in pages
+    ]
+    
+    # Wait for all tasks to complete
+    results_list = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Combine results and handle errors
+    all_results = []
+    for i, result in enumerate(results_list):
+        if isinstance(result, Exception):
+            log_error(f"Page {i+1} failed: {result}")
+            # Continue with other pages
+        else:
+            all_results.extend(result)
+    
+    log_info(f"Completed {len(results_list)} parallel requests, got {len(all_results)} results")
+    
+    return all_results
+
+
 def enrich_with_llm_categories(
-    batch_size: int = 10,
+    batch_size: int = 15,
+    page_size: int = 15,
     min_confidence: float = 0.7,
     max_events: int = None,
     model: str = "gpt-4o-mini"
@@ -289,7 +347,8 @@ def enrich_with_llm_categories(
     """Main enrichment function.
     
     Args:
-        batch_size: Number of events to process per LLM call
+        batch_size: Number of events to fetch from DB per batch
+        page_size: Number of events per API call (for parallelization)
         min_confidence: Minimum confidence threshold (0.0-1.0)
         max_events: Maximum total events to process (None for unlimited)
         model: OpenAI model to use
@@ -315,9 +374,14 @@ def enrich_with_llm_categories(
             log_info(f"Processing batch of {len(events)} events...")
             log_info(f"{'='*60}\n")
             
-            # Categorize with LLM
+            # Categorize with LLM (parallel if batch > page_size)
             try:
-                results = categorize_events_with_llm(events, model=model)
+                if len(events) > page_size:
+                    # Use parallel processing
+                    results = asyncio.run(categorize_batch_parallel(events, page_size, model))
+                else:
+                    # Single request
+                    results = categorize_events_with_llm(events, model=model)
             except Exception as e:
                 log_error(f"Batch failed, skipping: {e}")
                 break
@@ -364,8 +428,14 @@ def main():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=10,
-        help="Number of events to process per LLM call (default: 10)"
+        default=15,
+        help="Number of events to fetch from DB per batch (default: 15)"
+    )
+    parser.add_argument(
+        "--page-size",
+        type=int,
+        default=15,
+        help="Number of events per API call for parallelization (default: 15)"
     )
     parser.add_argument(
         "--min-confidence",
@@ -392,12 +462,14 @@ def main():
     log_info(f"Starting LLM categorization enrichment...")
     log_info(f"  Model: {args.model}")
     log_info(f"  Batch size: {args.batch_size}")
+    log_info(f"  Page size: {args.page_size}")
     log_info(f"  Min confidence: {args.min_confidence:.0%}")
     log_info(f"  Max events: {args.max_events or 'unlimited'}\n")
     
     try:
         enrich_with_llm_categories(
             batch_size=args.batch_size,
+            page_size=args.page_size,
             min_confidence=args.min_confidence,
             max_events=args.max_events,
             model=args.model

@@ -183,7 +183,7 @@ def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[s
             FROM event_categories
             WHERE event_key IN ({placeholders})
             ORDER BY event_key, 
-                     CASE WHEN llm_source IS NULL THEN 0 ELSE 1 END,  -- Wikipedia first
+                     CASE WHEN llm_source IS NULL THEN 1 ELSE 0 END,  -- LLM first (prioritize AI)
                      confidence DESC NULLS LAST
             """,
             event_keys
@@ -216,10 +216,10 @@ def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[s
                 )
                 
                 if not has_wiki_category:
-                    # Add the legacy Wikipedia category at the front
+                    # Add the legacy Wikipedia category at the end (LLM categories come first)
                     if event_id not in enrichments_by_id:
                         enrichments_by_id[event_id] = []
-                    enrichments_by_id[event_id].insert(0, {
+                    enrichments_by_id[event_id].append({
                         'category': wiki_category,
                         'llm_source': None,
                         'confidence': None
@@ -622,25 +622,29 @@ def get_categories():
     Returns a combined list of categories from:
     1. Legacy Wikipedia categories (historical_events.category)
     2. Enrichment categories (event_categories table, both Wikipedia and LLM)
+    
+    Each category includes has_llm_enrichment flag to indicate if it has AI categorization.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        # Get all unique categories from both sources
-        # Use UNION to combine and deduplicate
+        # Get all unique categories and whether they have LLM enrichment
         cursor.execute("""
-            SELECT category, COUNT(DISTINCT event_key) as count
+            SELECT 
+                category, 
+                COUNT(DISTINCT event_key) as count,
+                BOOL_OR(has_llm) as has_llm_enrichment
             FROM (
-                -- Legacy Wikipedia categories
-                SELECT category, event_key
+                -- Legacy Wikipedia categories (no LLM enrichment)
+                SELECT category, event_key, false as has_llm
                 FROM historical_events
                 WHERE category IS NOT NULL
                 
                 UNION
                 
-                -- Enrichment categories (both Wikipedia and LLM)
-                SELECT ec.category, ec.event_key
+                -- Enrichment categories - mark LLM ones
+                SELECT ec.category, ec.event_key, (ec.llm_source IS NOT NULL) as has_llm
                 FROM event_categories ec
             ) AS all_categories
             GROUP BY category

@@ -14,6 +14,7 @@ class CategoryFilter {
     constructor(orchestrator) {
         this.orchestrator = orchestrator;
         this.allCategories = []; // All available categories
+        this.categoryMetadata = new Map(); // Map of category -> {count, has_llm_enrichment}
         this.selectedCategories = new Set(); // Currently selected categories
         
         // DOM elements
@@ -60,8 +61,16 @@ class CategoryFilter {
     async loadCategories(backend) {
         try {
             const categories = await backend.loadCategories();
-            // API returns [{category: "name", count: 42}, ...]
+            // API returns [{category: "name", count: 42, has_llm_enrichment: true/false}, ...]
             this.allCategories = categories.map(cat => cat.category);
+            
+            // Store metadata for sorting
+            categories.forEach(cat => {
+                this.categoryMetadata.set(cat.category, {
+                    count: cat.count,
+                    has_llm_enrichment: cat.has_llm_enrichment || false
+                });
+            });
             
             // Default: select all categories
             this.selectedCategories = new Set(this.allCategories);
@@ -88,8 +97,18 @@ class CategoryFilter {
         // Clear existing list
         this.list.innerHTML = '';
         
-        // Sort categories alphabetically
-        const sortedCategories = [...this.allCategories].sort();
+        // Sort categories: LLM-enriched first, then alphabetically within each group
+        const sortedCategories = [...this.allCategories].sort((a, b) => {
+            const aHasLLM = this.categoryMetadata.get(a)?.has_llm_enrichment || false;
+            const bHasLLM = this.categoryMetadata.get(b)?.has_llm_enrichment || false;
+            
+            // If one has LLM and the other doesn't, LLM comes first
+            if (aHasLLM && !bHasLLM) return -1;
+            if (!aHasLLM && bHasLLM) return 1;
+            
+            // Otherwise, sort alphabetically
+            return a.localeCompare(b);
+        });
         
         // Get color map from orchestrator
         const state = this.orchestrator.getState();
