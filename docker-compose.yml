@@ -55,6 +55,8 @@ services:
       # Optional ingestion tuning
       WIKI_MIN_YEAR: ${WIKI_MIN_YEAR:-}  # e.g., "100 BC", "10 AD" - earliest year to ingest
       WIKI_MAX_YEAR: ${WIKI_MAX_YEAR:-}  # e.g., "150 BC", "1962 AD", "1962" - latest year to ingest
+      # OpenAI API key for LLM enrichment
+      OPENAI_API_KEY: ${OPEN_AI_API_KEY:-}
     depends_on:
       database:
         condition: service_healthy

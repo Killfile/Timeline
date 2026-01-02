@@ -35,6 +35,12 @@ app.add_middleware(
 
 
 # Pydantic models
+class CategoryEnrichment(BaseModel):
+    category: str
+    llm_source: Optional[str] = None  # NULL for Wikipedia, model name for LLM
+    confidence: Optional[float] = None  # NULL for Wikipedia, 0.0-1.0 for LLM
+
+
 class HistoricalEvent(BaseModel):
     id: int
     title: str
@@ -49,7 +55,8 @@ class HistoricalEvent(BaseModel):
     is_bc_end: bool = False
     weight: Optional[int] = None
     precision: Optional[float] = None
-    category: Optional[str] = None
+    category: Optional[str] = None  # Legacy Wikipedia category (kept for compatibility)
+    categories: List[CategoryEnrichment] = []  # New: All categories (Wikipedia + LLM)
     wikipedia_url: Optional[str] = None
     display_year: Optional[str] = None
 
@@ -136,9 +143,70 @@ def health_check():
         cursor.execute("SELECT 1")
         cursor.close()
         conn.close()
-        return {"status": "healthy", "database": "connected"}
+        return {"status": "healthy"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+
+def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
+    """Fetch enrichment categories for a list of event IDs.
+    
+    Args:
+        conn: Database connection
+        event_ids: List of event IDs
+        
+    Returns:
+        Dictionary mapping event_id to list of category enrichments
+    """
+    if not event_ids:
+        return {}
+    
+    cursor = conn.cursor()
+    try:
+        # Get event_key to id mapping
+        placeholders = ','.join(['%s'] * len(event_ids))
+        cursor.execute(
+            f"SELECT id, event_key FROM historical_events WHERE id IN ({placeholders})",
+            event_ids
+        )
+        event_key_map = {row['id']: row['event_key'] for row in cursor.fetchall()}
+        
+        # Get all enrichment categories for these event_keys
+        event_keys = list(event_key_map.values())
+        if not event_keys:
+            return {}
+        
+        placeholders = ','.join(['%s'] * len(event_keys))
+        cursor.execute(
+            f"""
+            SELECT event_key, category, llm_source, confidence
+            FROM event_categories
+            WHERE event_key IN ({placeholders})
+            ORDER BY event_key, 
+                     CASE WHEN llm_source IS NULL THEN 0 ELSE 1 END,  -- Wikipedia first
+                     confidence DESC NULLS LAST
+            """,
+            event_keys
+        )
+        
+        # Group by event_id
+        enrichments_by_id = {}
+        for row in cursor.fetchall():
+            event_key = row['event_key']
+            # Find the event_id for this event_key
+            event_id = next((eid for eid, ek in event_key_map.items() if ek == event_key), None)
+            if event_id:
+                if event_id not in enrichments_by_id:
+                    enrichments_by_id[event_id] = []
+                enrichments_by_id[event_id].append({
+                    'category': row['category'],
+                    'llm_source': row['llm_source'],
+                    'confidence': row['confidence']
+                })
+        
+        return enrichments_by_id
+    finally:
+        cursor.close()
 
 
 @app.get("/events", response_model=List[HistoricalEvent])
@@ -284,10 +352,17 @@ def get_events(
         cursor.execute(query, params)
         events = cursor.fetchall()
         
-        # Add display year
+        # Fetch enrichment categories for all events
+        event_ids = [event['id'] for event in events]
+        enrichments = fetch_event_enrichments(conn, event_ids)
+        
+        # Add display year and enrichment categories to each event
         for event in events:
             if event['start_year']:
                 event['display_year'] = format_year_display(event['start_year'], event['is_bc_start'])
+            
+            # Add enrichment categories
+            event['categories'] = enrichments.get(event['id'], [])
         
         return events
     
@@ -381,9 +456,9 @@ def get_event(event_id: int):
     
     try:
         cursor.execute("""
-         SELECT id, title, description, start_year, start_month, start_day,
-                end_year, end_month, end_day,
-                is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
+            SELECT id, title, description, start_year, start_month, start_day,
+                   end_year, end_month, end_day,
+                   is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
             FROM historical_events 
             WHERE id = %s
         """, (event_id,))
@@ -396,6 +471,10 @@ def get_event(event_id: int):
         # Add display year
         if event['start_year']:
             event['display_year'] = format_year_display(event['start_year'], event['is_bc_start'])
+        
+        # Fetch enrichment categories
+        enrichments = fetch_event_enrichments(conn, [event_id])
+        event['categories'] = enrichments.get(event_id, [])
         
         return event
     

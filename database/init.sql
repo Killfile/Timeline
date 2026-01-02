@@ -93,13 +93,18 @@ CREATE TABLE IF NOT EXISTS event_enrichments (
 
 -- Event categories table (supports multiple categories per event)
 -- Second-order data that survives reimports
+-- Tracks both Wikipedia-native and LLM-assigned categories
 CREATE TABLE IF NOT EXISTS event_categories (
     event_key TEXT REFERENCES historical_events(event_key) ON DELETE CASCADE,
     category TEXT NOT NULL,
-    PRIMARY KEY (event_key, category)
+    llm_source TEXT,  -- NULL for Wikipedia, 'gpt-4o-mini' etc for LLM
+    confidence FLOAT,  -- NULL for Wikipedia, 0.0-1.0 for LLM
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (event_key, category, COALESCE(llm_source, ''))
 );
 
 CREATE INDEX IF NOT EXISTS idx_event_categories_category ON event_categories(category);
+CREATE INDEX IF NOT EXISTS idx_event_categories_llm_source ON event_categories(llm_source);
 
 -- Create function to convert year to timeline position (handling BC dates)
 CREATE OR REPLACE FUNCTION get_timeline_position(year INTEGER, is_bc BOOLEAN)
