@@ -25,8 +25,19 @@ class TimelineLegend {
      */
     updateFromEvents(events) {
         // Extract unique categories from events
+        // Now considers both legacy category field AND enrichment categories
         const newCategories = new Set();
         events.forEach(event => {
+            // Add categories from enrichments array (both Wikipedia and LLM)
+            if (event.categories && Array.isArray(event.categories)) {
+                event.categories.forEach(catEnrichment => {
+                    if (catEnrichment.category) {
+                        newCategories.add(catEnrichment.category);
+                    }
+                });
+            }
+            
+            // Also add legacy category field for backwards compatibility
             if (event.category) {
                 newCategories.add(event.category);
             }

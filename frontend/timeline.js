@@ -748,12 +748,35 @@ function render() {
     const groupsMerged = eventGroups.merge(groupsEnter);
 
     // Update colors and visibility
+    // Use Wikipedia category first, fallback to LLM category, then legacy category field
     groupsMerged.select('circle.timeline-event')
-        .attr('fill', d => categoryColors.get(d.category) || '#999')
+        .attr('fill', d => {
+            // Try Wikipedia category first
+            const wikiCat = d.categories?.find(c => !c.llm_source);
+            if (wikiCat) return categoryColors.get(wikiCat.category) || '#999';
+            
+            // Fallback to LLM category
+            const llmCat = d.categories?.find(c => c.llm_source);
+            if (llmCat) return categoryColors.get(llmCat.category) || '#999';
+            
+            // Final fallback to legacy category field
+            return categoryColors.get(d.category) || '#999';
+        })
         .style('opacity', d => hasSpan(d) ? 0 : 0.85); // Hide dots for span events
 
     groupsMerged.select('rect.timeline-span')
-        .attr('fill', d => categoryColors.get(d.category) || '#999')
+        .attr('fill', d => {
+            // Try Wikipedia category first
+            const wikiCat = d.categories?.find(c => !c.llm_source);
+            if (wikiCat) return categoryColors.get(wikiCat.category) || '#999';
+            
+            // Fallback to LLM category
+            const llmCat = d.categories?.find(c => c.llm_source);
+            if (llmCat) return categoryColors.get(llmCat.category) || '#999';
+            
+            // Final fallback to legacy category field
+            return categoryColors.get(d.category) || '#999';
+        })
         .style('opacity', d => hasSpan(d) ? 0.75 : 0); // Hide bars for moment events
 
     // Update text content
@@ -863,7 +886,25 @@ function handleEventClick(event, d) {
     // Populate basic info
     title.textContent = d.title || d.name || 'Untitled Event';
     period.textContent = periodText;
-    category.textContent = d.category || 'Unknown';
+    
+    // Format categories display
+    const wikipediaCategories = d.categories?.filter(c => !c.llm_source) || [];
+    const llmCategories = d.categories?.filter(c => c.llm_source) || [];
+    
+    let categoryDisplay = '';
+    if (wikipediaCategories.length > 0) {
+        categoryDisplay = wikipediaCategories.map(c => c.category).join(', ');
+    } else if (llmCategories.length > 0) {
+        // Use LLM category if no Wikipedia category
+        categoryDisplay = llmCategories[0].category + ' (AI)';
+    } else if (d.category) {
+        // Fallback to legacy category field
+        categoryDisplay = d.category;
+    } else {
+        categoryDisplay = 'Uncategorized';
+    }
+    
+    category.textContent = categoryDisplay;
     
     // Create detailed description with full text and placement data
     description.innerHTML = `
@@ -871,6 +912,39 @@ function handleEventClick(event, d) {
             <strong>Full Text:</strong><br/>
             ${d.text || d.description || 'No description available'}
         </div>
+        
+        <details open style="margin-bottom: 1em; padding: 0.5em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;">
+            <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5em; color: #333;">Categories & Enrichment</summary>
+            ${wikipediaCategories.length > 0 ? `
+                <div style="margin-bottom: 1em;">
+                    <strong style="color: #1a73e8;">📚 Wikipedia Categories:</strong><br/>
+                    <div style="margin-top: 0.5em;">
+                        ${wikipediaCategories.map(cat => 
+                            `<span style="display: inline-block; background: #e8f0fe; color: #1a73e8; padding: 4px 8px; margin: 2px; border-radius: 4px; font-size: 12px;">${cat.category}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            ${llmCategories.length > 0 ? `
+                <div style="margin-bottom: 0.5em;">
+                    <strong style="color: #ea4335;">🤖 AI-Assigned Categories:</strong><br/>
+                    <div style="margin-top: 0.5em;">
+                        ${llmCategories.map(cat => 
+                            `<div style="display: inline-block; background: #fce8e6; border: 1px solid #ea4335; padding: 6px 10px; margin: 2px; border-radius: 4px; font-size: 12px;">
+                                <strong>${cat.category}</strong><br/>
+                                <span style="font-size: 10px; color: #666;">
+                                    Model: ${cat.llm_source || 'Unknown'} | 
+                                    Confidence: ${cat.confidence ? (cat.confidence * 100).toFixed(1) + '%' : 'N/A'}
+                                </span>
+                            </div>`
+                        ).join('')}
+                    </div>
+                </div>
+            ` : ''}
+            ${wikipediaCategories.length === 0 && llmCategories.length === 0 ? `
+                <em style="color: #666;">No categories assigned</em>
+            ` : ''}
+        </details>
         
         <details open style="margin-bottom: 1em; padding: 0.5em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;">
             <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5em; color: #333;">Placement Data</summary>

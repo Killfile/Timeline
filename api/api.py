@@ -163,16 +163,16 @@ def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[s
     
     cursor = conn.cursor()
     try:
-        # Get event_key to id mapping
+        # Get event_key to id mapping, plus legacy Wikipedia category
         placeholders = ','.join(['%s'] * len(event_ids))
         cursor.execute(
-            f"SELECT id, event_key FROM historical_events WHERE id IN ({placeholders})",
+            f"SELECT id, event_key, category FROM historical_events WHERE id IN ({placeholders})",
             event_ids
         )
-        event_key_map = {row['id']: row['event_key'] for row in cursor.fetchall()}
+        event_info = {row['id']: {'event_key': row['event_key'], 'category': row['category']} for row in cursor.fetchall()}
         
         # Get all enrichment categories for these event_keys
-        event_keys = list(event_key_map.values())
+        event_keys = [info['event_key'] for info in event_info.values()]
         if not event_keys:
             return {}
         
@@ -194,7 +194,7 @@ def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[s
         for row in cursor.fetchall():
             event_key = row['event_key']
             # Find the event_id for this event_key
-            event_id = next((eid for eid, ek in event_key_map.items() if ek == event_key), None)
+            event_id = next((eid for eid, info in event_info.items() if info['event_key'] == event_key), None)
             if event_id:
                 if event_id not in enrichments_by_id:
                     enrichments_by_id[event_id] = []
@@ -203,6 +203,27 @@ def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[s
                     'llm_source': row['llm_source'],
                     'confidence': row['confidence']
                 })
+        
+        # Add legacy Wikipedia categories if not already present in enrichments
+        for event_id, info in event_info.items():
+            wiki_category = info['category']
+            if wiki_category:
+                # Check if this category is already in enrichments (from event_categories table)
+                existing_categories = enrichments_by_id.get(event_id, [])
+                has_wiki_category = any(
+                    c['category'] == wiki_category and c['llm_source'] is None 
+                    for c in existing_categories
+                )
+                
+                if not has_wiki_category:
+                    # Add the legacy Wikipedia category at the front
+                    if event_id not in enrichments_by_id:
+                        enrichments_by_id[event_id] = []
+                    enrichments_by_id[event_id].insert(0, {
+                        'category': wiki_category,
+                        'llm_source': None,
+                        'confidence': None
+                    })
         
         return enrichments_by_id
     finally:
@@ -295,10 +316,19 @@ def get_events(
                 """
                 params.extend([i, bin_end, bin_start, max_reasonable_span])
                 
-                # Handle multiple categories
+                # Handle multiple categories - check both legacy field and enrichments
                 if category and len(category) > 0:
                     placeholders = ','.join(['%s'] * len(category))
-                    subquery += f" AND category IN ({placeholders})"
+                    # Check if event has the category in either legacy field OR enrichment table
+                    subquery += f"""
+                       AND (category IN ({placeholders})
+                            OR event_key IN (
+                                SELECT event_key FROM event_categories 
+                                WHERE category IN ({placeholders})
+                            ))
+                    """
+                    # Double the params since we use the category list twice
+                    params.extend(category)
                     params.extend(category)
                 
                 subquery += " ORDER BY weight DESC, id LIMIT %s)"
@@ -339,10 +369,19 @@ def get_events(
                 query += " AND (end_year <= %s OR end_year IS NULL)"
                 params.append(end_year)
             
-            # Handle multiple categories
+            # Handle multiple categories - check both legacy field and enrichments
             if category and len(category) > 0:
                 placeholders = ','.join(['%s'] * len(category))
-                query += f" AND category IN ({placeholders})"
+                # Check if event has the category in either legacy field OR enrichment table
+                query += f"""
+                   AND (category IN ({placeholders})
+                        OR event_key IN (
+                            SELECT event_key FROM event_categories 
+                            WHERE category IN ({placeholders})
+                        ))
+                """
+                # Double the params since we use the category list twice
+                params.extend(category)
                 params.extend(category)
             
             query += " ORDER BY start_year ASC NULLS LAST, end_year ASC NULLS LAST"
@@ -432,10 +471,19 @@ def get_events_count(
                 query += " AND (end_year <= %s OR end_year IS NULL)"
                 params.append(end_year)
         
-        # Handle multiple categories
+        # Handle multiple categories - check both legacy field and enrichments
         if category and len(category) > 0:
             placeholders = ','.join(['%s'] * len(category))
-            query += f" AND category IN ({placeholders})"
+            # Check if event has the category in either legacy field OR enrichment table
+            query += f"""
+               AND (category IN ({placeholders})
+                    OR event_key IN (
+                        SELECT event_key FROM event_categories 
+                        WHERE category IN ({placeholders})
+                    ))
+            """
+            # Double the params since we use the category list twice
+            params.extend(category)
             params.extend(category)
         
         cursor.execute(query, params)
@@ -569,16 +617,33 @@ def get_stats():
 
 @app.get("/categories")
 def get_categories():
-    """Get list of all categories."""
+    """Get list of all categories (both Wikipedia and LLM-enriched).
+    
+    Returns a combined list of categories from:
+    1. Legacy Wikipedia categories (historical_events.category)
+    2. Enrichment categories (event_categories table, both Wikipedia and LLM)
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
+        # Get all unique categories from both sources
+        # Use UNION to combine and deduplicate
         cursor.execute("""
-            SELECT category, COUNT(*) as count 
-            FROM historical_events 
-            WHERE category IS NOT NULL 
-            GROUP BY category 
+            SELECT category, COUNT(DISTINCT event_key) as count
+            FROM (
+                -- Legacy Wikipedia categories
+                SELECT category, event_key
+                FROM historical_events
+                WHERE category IS NOT NULL
+                
+                UNION
+                
+                -- Enrichment categories (both Wikipedia and LLM)
+                SELECT ec.category, ec.event_key
+                FROM event_categories ec
+            ) AS all_categories
+            GROUP BY category
             ORDER BY count DESC, category
         """)
         categories = cursor.fetchall()
