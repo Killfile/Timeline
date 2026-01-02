@@ -199,13 +199,30 @@ function reloadViewportEvents(startYear, endYear) {
             // Get selected categories from orchestrator
             const selectedCategories = window.timelineOrchestrator.getSelectedCategories();
             
-            console.log(`[Timeline] Loading events for viewport: ${isStartBC ? Math.abs(Math.round(startYear)) + ' BC' : Math.round(startYear) + ' AD'} to ${isEndBC ? Math.abs(Math.round(endYear)) + ' BC' : Math.round(endYear) + ' AD'}`);
+            // Use floor/ceil to ensure we capture all events partially visible in viewport
+            // For AD years (positive): floor start (earlier), ceil end (later)
+            // For BC years (negative): ceil start (more negative = earlier), floor end (less negative = later)
+            let viewportStartAbs, viewportEndAbs;
+            
+            if (isStartBC) {
+                viewportStartAbs = Math.abs(Math.ceil(startYear));
+            } else {
+                viewportStartAbs = Math.abs(Math.floor(startYear));
+            }
+            
+            if (isEndBC) {
+                viewportEndAbs = Math.abs(Math.floor(endYear));
+            } else {
+                viewportEndAbs = Math.abs(Math.ceil(endYear));
+            }
+            
+            console.log(`[Timeline] Loading events for viewport: ${isStartBC ? viewportStartAbs + ' BC' : viewportStartAbs + ' AD'} to ${isEndBC ? viewportEndAbs + ' BC' : viewportEndAbs + ' AD'}`);
             console.log(`[Timeline] Category filter: ${selectedCategories.length} categories selected`);
             
             // Load events for this viewport with category filter
             const events = await window.timelineBackend.loadViewportEvents({
-                viewportStart: Math.abs(Math.round(startYear)),
-                viewportEnd: Math.abs(Math.round(endYear)),
+                viewportStart: viewportStartAbs,
+                viewportEnd: viewportEndAbs,
                 isStartBC,
                 isEndBC,
                 limit: 1000,
@@ -576,33 +593,60 @@ function hasSpan(d) {
 function applyPositions(scale) {
     const groups = svg.selectAll('.event-group');
     
-    // First pass: collect all events with their widths and weights
+    // First pass: collect all events with their widths, weights, and positions
     const eventWidths = [];
     groups.each(function(d) {
         const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
-        const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
+        let endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
+        
+        // For single-day events, add 1 day (1/365 year) to span the full day
+        if (d.start_year === d.end_year && 
+            d.start_month === d.end_month && 
+            d.start_day === d.end_day && 
+            d.start_day !== null) {
+            endYear += 1/365.0;
+        }
+        
         const sx = startYear !== null ? scale(startYear) : 0;
         const ex = endYear !== null ? scale(endYear) : sx;
         const width = Math.abs(ex - sx);
+        const centerX = (sx + ex) / 2; // Calculate center position for sorting
         
         eventWidths.push({
             id: d.id,
             width: width,
             weight: d.weight || 0,
-            hasSpan: hasSpan(d)
+            hasSpan: hasSpan(d),
+            centerX: centerX
         });
     });
     
-    // Filter to events wide enough for labels and sort by weight
+    // Filter to events wide enough for labels and sort by position (left to right)
     const labelCandidates = eventWidths
         .filter(e => e.hasSpan && e.width > MIN_LABEL_WIDTH)
-        .sort((a, b) => b.weight - a.weight) // Sort by weight descending
-        .slice(0, MAX_LABELS) // Take top N
-        .map(e => e.id);
+        .sort((a, b) => a.centerX - b.centerX); // Sort by position left to right
     
-    const shouldShowLabel = new Set(labelCandidates);
+    const totalLabelable = labelCandidates.length;
     
-    console.log(`[Timeline] Label selection: ${eventWidths.filter(e => e.hasSpan && e.width > MIN_LABEL_WIDTH).length} candidates, showing ${labelCandidates.length} labels`);
+    // Calculate interval for even distribution
+    let selectedLabels = [];
+    if (totalLabelable <= MAX_LABELS) {
+        // If we have fewer candidates than max labels, show them all
+        selectedLabels = labelCandidates.map(e => e.id);
+    } else {
+        // Select every Nth event to distribute evenly across the timeline
+        const interval = totalLabelable / MAX_LABELS;
+        for (let i = 0; i < MAX_LABELS; i++) {
+            const index = Math.floor(i * interval);
+            if (index < labelCandidates.length) {
+                selectedLabels.push(labelCandidates[index].id);
+            }
+        }
+    }
+    
+    const shouldShowLabel = new Set(selectedLabels);
+    
+    console.log(`[Timeline] Label selection: ${totalLabelable} candidates, showing ${selectedLabels.length} labels (interval: ${totalLabelable > MAX_LABELS ? (totalLabelable / MAX_LABELS).toFixed(2) : 'all'})`);
     
     // Position each group
     groups.attr('transform', d => {
@@ -635,7 +679,16 @@ function applyPositions(scale) {
         .attr('width', d => {
             if (!hasSpan(d)) return 0;
             const startYear = toYearNumber(d.start_year, d.is_bc_start, d.start_month, d.start_day);
-            const endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
+            let endYear = toYearNumber(d.end_year, d.is_bc_end, d.end_month, d.end_day);
+            
+            // For single-day events, add 1 day (1/365 year) to span the full day
+            if (d.start_year === d.end_year && 
+                d.start_month === d.end_month && 
+                d.start_day === d.end_day && 
+                d.start_day !== null) {
+                endYear += 1/365.0;
+            }
+            
             const sx = startYear !== null ? scale(startYear) : 0;
             const ex = endYear !== null ? scale(endYear) : sx;
             return Math.max(3, Math.abs(ex - sx));

@@ -309,10 +309,10 @@ def get_events(
                      WHERE weight IS NOT NULL
                        AND start_year IS NOT NULL
                        AND end_year IS NOT NULL
-                       AND (CASE WHEN is_bc_start THEN -start_year ELSE start_year END) <= %s
-                       AND (CASE WHEN is_bc_end THEN -end_year ELSE end_year END) >= %s
-                       AND ABS((CASE WHEN is_bc_end THEN -end_year ELSE end_year END) - 
-                               (CASE WHEN is_bc_start THEN -start_year ELSE start_year END)) <= %s
+                       AND to_fractional_year(start_year, is_bc_start, start_month, start_day) <= %s
+                       AND to_fractional_year(end_year, is_bc_end, end_month, end_day) >= %s
+                       AND ABS(to_fractional_year(end_year, is_bc_end, end_month, end_day) - 
+                               to_fractional_year(start_year, is_bc_start, start_month, start_day)) <= %s
                 """
                 params.extend([i, bin_end, bin_start, max_reasonable_span])
                 

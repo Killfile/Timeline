@@ -117,3 +117,53 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Create function to convert year/month/day to fractional year (handling BC dates)
+-- This matches the JavaScript toYearNumber function in timeline.js
+CREATE OR REPLACE FUNCTION to_fractional_year(
+    year INTEGER, 
+    is_bc BOOLEAN, 
+    month INTEGER DEFAULT NULL, 
+    day INTEGER DEFAULT NULL
+)
+RETURNS NUMERIC AS $$
+DECLARE
+    fractional_year NUMERIC;
+    days_in_month INTEGER[] := ARRAY[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    day_of_year INTEGER := 0;
+    i INTEGER;
+    year_fraction NUMERIC;
+BEGIN
+    IF year IS NULL THEN
+        RETURN NULL;
+    END IF;
+    
+    -- Start with base year (negative for BC)
+    IF is_bc THEN
+        fractional_year := -year;
+    ELSE
+        fractional_year := year;
+    END IF;
+    
+    -- Add fractional part based on month/day if available
+    IF month IS NOT NULL THEN
+        -- Add days from previous months
+        FOR i IN 1..(month - 1) LOOP
+            day_of_year := day_of_year + days_in_month[i];
+        END LOOP;
+        
+        -- Add days in current month
+        IF day IS NOT NULL THEN
+            day_of_year := day_of_year + day;
+        ELSE
+            -- If no day specified, use middle of month (matches JS logic)
+            day_of_year := day_of_year + (days_in_month[month] / 2);
+        END IF;
+        
+        year_fraction := day_of_year::NUMERIC / 365.0;
+        fractional_year := fractional_year + year_fraction;
+    END IF;
+    
+    RETURN fractional_year;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
