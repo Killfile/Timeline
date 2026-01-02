@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import time
+from event_key import compute_event_key
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -308,17 +309,26 @@ def insert_event(conn, event: dict, category: str | None):
     except Exception:
         pass
 
+    # Compute deterministic event_key for enrichment association
+    event_key = compute_event_key(
+        title=event["title"],
+        start_year=event.get("start_year") or 0,
+        end_year=event.get("end_year") or 0,
+        description=event.get("description")
+    )
+
     insert_sql = """
         INSERT INTO historical_events
-            (title, description, start_year, start_month, start_day, 
+            (event_key, title, description, start_year, start_month, start_day, 
              end_year, end_month, end_day, 
              is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT ON CONSTRAINT uq_historical_events_identity DO NOTHING
         RETURNING id
     """
 
     insert_params = (
+        event_key,
         event["title"],
         event.get("description"),
         event.get("start_year"),
@@ -349,10 +359,10 @@ def insert_event(conn, event: dict, category: str | None):
             cursor.execute(
                 """
                 INSERT INTO historical_events
-                    (title, description, start_year, start_month, start_day,
+                    (event_key, title, description, start_year, start_month, start_day,
                      end_year, end_month, end_day,
                      is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 insert_params,

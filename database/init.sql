@@ -1,6 +1,7 @@
 -- Create table for historical events from Wikipedia
 CREATE TABLE IF NOT EXISTS historical_events (
     id SERIAL PRIMARY KEY,
+    event_key TEXT UNIQUE NOT NULL, -- Deterministic hash for enrichment association
     title VARCHAR(500) NOT NULL,
     description TEXT,
     start_year INTEGER,
@@ -73,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_event_date_extraction_debug_event_id
     ON event_date_extraction_debug(historical_event_id);
 
 -- Create indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_historical_events_event_key ON historical_events(event_key);
 CREATE INDEX IF NOT EXISTS idx_historical_events_start_year ON historical_events(start_year);
 CREATE INDEX IF NOT EXISTS idx_historical_events_end_year ON historical_events(end_year);
 CREATE INDEX IF NOT EXISTS idx_historical_events_category ON historical_events(category);
@@ -80,6 +82,24 @@ CREATE INDEX IF NOT EXISTS idx_historical_events_date_range ON historical_events
 
 -- Create full-text search index
 CREATE INDEX IF NOT EXISTS idx_historical_events_search ON historical_events USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));
+
+-- Event enrichments table (second-order data that survives reimports)
+-- Stores enrichment data tied to event_key rather than event id
+CREATE TABLE IF NOT EXISTS event_enrichments (
+    event_key TEXT PRIMARY KEY REFERENCES historical_events(event_key) ON DELETE CASCADE,
+    interest_count INTEGER DEFAULT 0,
+    last_enriched_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Event categories table (supports multiple categories per event)
+-- Second-order data that survives reimports
+CREATE TABLE IF NOT EXISTS event_categories (
+    event_key TEXT REFERENCES historical_events(event_key) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    PRIMARY KEY (event_key, category)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_categories_category ON event_categories(category);
 
 -- Create function to convert year to timeline position (handling BC dates)
 CREATE OR REPLACE FUNCTION get_timeline_position(year INTEGER, is_bc BOOLEAN)
