@@ -89,6 +89,60 @@ function updateTimelineHeight() {
 }
 
 /**
+ * Update timeline dimensions (both width and height)
+ * Called when entering/exiting fullscreen or on window resize
+ */
+function updateTimelineDimensions() {
+    const container = d3.select('#timeline');
+    const width = container.node().clientWidth;
+    const availableLanes = calculateAvailableLanes();
+    const height = availableLanes * LANE_HEIGHT + AXIS_HEIGHT;
+    
+    // Update container height
+    d3.select('#timeline-container').style('height', `${height}px`);
+    
+    // Update SVG dimensions if it exists
+    if (svg) {
+        svg.attr('width', width)
+           .attr('height', height);
+        
+        // Update background rect to capture zoom/pan events
+        svg.select('.zoom-capture')
+            .attr('width', width)
+            .attr('height', height);
+        
+        // Update axis position
+        svg.select('.x-axis')
+            .attr('transform', `translate(0, ${availableLanes * LANE_HEIGHT})`);
+        
+        // Update lane guides
+        svg.selectAll('.lane-guides line')
+            .attr('x2', width);
+        
+        // Update x-scale range
+        if (xScale) {
+            xScale.range([0, width]);
+            
+            // Re-render axis with updated scale
+            const currentScale = currentTransform.rescaleX(xScale);
+            xAxis.scale(currentScale);
+            svg.select('.x-axis').call(xAxis);
+            
+            // Update orchestrator scale
+            window.timelineOrchestrator.setScale(currentScale);
+            
+            // Reposition all events
+            applyPositions(currentScale);
+        }
+    }
+    
+    // Notify orchestrator of available lanes
+    window.timelineOrchestrator.setAvailableLanes(availableLanes);
+    
+    console.log(`[Timeline] Updated timeline dimensions to ${width}x${height}px for ${availableLanes} lanes`);
+}
+
+/**
  * Convert event year/BC flag to numeric scale value
  * @param {number} year - The year value from the API (always positive)
  * @param {boolean} isBC - Whether this is a BC date
@@ -377,8 +431,8 @@ function initializeTimeline() {
             clearTimeout(resizeTimer);
         }
         resizeTimer = setTimeout(() => {
-            updateTimelineHeight();
-            // Trigger repack after height change
+            updateTimelineDimensions();
+            // Trigger repack after dimension change
             const currentEvents = window.timelineOrchestrator.getEvents();
             const currentScale = window.timelineOrchestrator.getScale();
             if (currentEvents.length > 0 && currentScale) {
@@ -452,8 +506,8 @@ function handleFullscreenChange() {
         }
     }
     
-    // Recalculate available lanes based on new height
-    updateTimelineHeight();
+    // Recalculate both width and height for fullscreen mode
+    updateTimelineDimensions();
     
     // Trigger repack with current events
     const currentEvents = window.timelineOrchestrator.getEvents();

@@ -543,6 +543,104 @@ def search_events(
         conn.close()
 
 
+# LLM Categorization endpoints for experimentation
+class EventCategorization(BaseModel):
+    """Request model for event categorization."""
+    events: List[Dict[str, Any]]
+    model: str = "gpt-4o-mini"
+
+
+class CategorizationResult(BaseModel):
+    """Result of categorizing a single event."""
+    event_id: int
+    category: str
+    confidence: float
+    reasoning: str
+
+
+@app.get("/uncategorized-events")
+def get_uncategorized_events(
+    limit: int = Query(default=10, ge=1, le=100, description="Number of events to return")
+):
+    """
+    Get events that don't have a category assigned.
+    Used for LLM categorization experimentation.
+    
+    Args:
+        limit: Maximum number of events to return (1-100)
+    
+    Returns:
+        List of uncategorized events with full details
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                id,
+                title,
+                description,
+                start_year,
+                start_month,
+                start_day,
+                end_year,
+                end_month,
+                end_day,
+                is_bc_start,
+                is_bc_end,
+                weight,
+                precision,
+                wikipedia_url
+            FROM historical_events
+            WHERE category IS NULL
+            ORDER BY RANDOM()
+            LIMIT %s
+        """, (limit,))
+        
+        events = cursor.fetchall()
+        return {"events": events, "count": len(events)}
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/categorize-events")
+def categorize_events(request: EventCategorization):
+    """
+    Categorize events using an LLM.
+    Used for experimentation before integrating into ingestion pipeline.
+    
+    Args:
+        request: EventCategorization with events list and model choice
+    
+    Returns:
+        List of categorization results with categories, confidence, and reasoning
+    """
+    from llm_categorizer import categorize_events_batch
+    
+    try:
+        # Call the modular categorizer
+        results = categorize_events_batch(
+            events=request.events,
+            model=request.model
+        )
+        
+        return {
+            "success": True,
+            "model": request.model,
+            "results": results,
+            "count": len(results)
+        }
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Categorization failed: {str(e)}"
+        )
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -11,7 +11,7 @@
     <div class="container">
         <header>
             <h1>📜 Historical Timeline</h1>
-            <p class="subtitle">Interactive timeline of historical events from Wikipedia</p>
+            <p class="subtitle">Interactive timeline of historical events from Wikipedia | <a href="experiment.html" style="color: #0066cc; text-decoration: none;">🧪 LLM Categorization Experiment</a></p>
         </header>
 
         <div class="controls">
@@ -65,19 +65,20 @@
         <div id="timeline-container">
             <svg id="timeline"></svg>
             <div id="category-legend" class="category-legend" aria-label="Category legend"></div>
-        </div>
-
-        <div id="event-details" class="event-details hidden">
-            <div class="event-details-container">
-                <div class="event-details-header">
-                    <h2 id="event-title"></h2>
-                    <button id="close-details-btn">&times;</button>
-                </div>
-                <div class="event-details-content">
-                    <p><strong>Time Period:</strong> <span id="event-period"></span></p>
-                    <p><strong>Category:</strong> <span id="event-category"></span></p>
-                    <div id="event-description"></div>
-                    <a id="event-wikipedia-link" href="#" target="_blank">Read more on Wikipedia →</a>
+            
+            <!-- Modal moved inside timeline-container so it appears in fullscreen -->
+            <div id="event-details" class="event-details hidden">
+                <div class="event-details-container">
+                    <div class="event-details-header">
+                        <h2 id="event-title"></h2>
+                        <button id="close-details-btn">&times;</button>
+                    </div>
+                    <div class="event-details-content">
+                        <p><strong>Time Period:</strong> <span id="event-period"></span></p>
+                        <p><strong>Category:</strong> <span id="event-category"></span></p>
+                        <div id="event-description"></div>
+                        <a id="event-wikipedia-link" href="#" target="_blank">Read more on Wikipedia →</a>
+                    </div>
                 </div>
             </div>
         </div>

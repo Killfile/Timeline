@@ -76,6 +76,7 @@ services:
       DB_USER: ${POSTGRES_USER:-timeline_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
       API_PORT: 8000
+      OPEN_AI_API_KEY: ${OPEN_AI_API_KEY:-}
     ports:
       - "8000:8000"
     depends_on:

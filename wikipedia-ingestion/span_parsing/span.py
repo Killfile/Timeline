@@ -4,11 +4,11 @@ from dataclasses import dataclass
 
 class SpanPrecision:
     """Enumeration of span precision levels."""
-    EXACT = 1.0          # Exact date
+    EXACT = 1.1          # Exact date
     APPROXIMATE = 0.5    # Approximate date
-    YEAR_ONLY = 1 / 100  # Year only precision
-    MONTH_ONLY = 1 / 12   # Month only precision
-    SEASON_ONLY = 1 / 4   # Season only precision (e.g., Spring, Summer, etc.)
+    YEAR_ONLY = 1 / 365  # Year only precision
+    MONTH_ONLY = 1 / 10   # Month only precision
+    SEASON_ONLY = 1 / 4.1   # Season only precision (e.g., Spring, Summer, etc.)
     CIRCA = 0
 
 
