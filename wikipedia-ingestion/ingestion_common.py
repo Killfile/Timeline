@@ -23,6 +23,9 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+# Target table for ingestion - can be overridden for atomic reimport
+INGEST_TARGET_TABLE = os.getenv("INGEST_TARGET_TABLE", "historical_events")
+
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -192,9 +195,9 @@ def clear_previously_ingested(conn) -> None:
     try:
         cur.execute("BEGIN;")
         cur.execute("TRUNCATE TABLE event_date_extraction_debug RESTART IDENTITY;")
-        cur.execute("TRUNCATE TABLE historical_events RESTART IDENTITY CASCADE;")
+        cur.execute(f"TRUNCATE TABLE {INGEST_TARGET_TABLE} RESTART IDENTITY CASCADE;")
         cur.execute("COMMIT;")
-        log_info("Cleared historical_events + event_date_extraction_debug")
+        log_info(f"Cleared {INGEST_TARGET_TABLE} + event_date_extraction_debug")
     except Exception:
         cur.execute("ROLLBACK;")
         raise
@@ -317,8 +320,8 @@ def insert_event(conn, event: dict, category: str | None):
         description=event.get("description")
     )
 
-    insert_sql = """
-        INSERT INTO historical_events
+    insert_sql = f"""
+        INSERT INTO {INGEST_TARGET_TABLE}
             (event_key, title, description, start_year, start_month, start_day, 
              end_year, end_month, end_day, 
              is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)
@@ -357,8 +360,8 @@ def insert_event(conn, event: dict, category: str | None):
             cursor.execute(insert_sql, insert_params)
         except psycopg2.errors.UndefinedObject:
             cursor.execute(
-                """
-                INSERT INTO historical_events
+                f"""
+                INSERT INTO {INGEST_TARGET_TABLE}
                     (event_key, title, description, start_year, start_month, start_day,
                      end_year, end_month, end_day,
                      is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)

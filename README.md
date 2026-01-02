@@ -180,6 +180,53 @@ docker compose restart wikipedia-ingestion
 docker compose run --rm wikipedia-ingestion python ingest_wikipedia.py
 ```
 
+## Data Management
+
+### Reimporting Wikipedia Data
+
+There are two ways to reimport Wikipedia data:
+
+#### Option 1: Atomic Reimport (Preserves Enrichments) ⭐ **Recommended**
+
+Use this when you want to refresh Wikipedia data while keeping user-generated enrichments (categories, notes, interest counts):
+
+```bash
+./scripts/atomic-reimport
+```
+
+With date range:
+```bash
+./scripts/atomic-reimport "1000 BC" "2026 AD"
+```
+
+**How it works:**
+1. Imports data into a temporary table
+2. Atomically swaps tables (< 1 second downtime)
+3. Preserves enrichments via deterministic `event_key` matching
+4. Automatically cleans up orphaned enrichments
+
+See [docs/atomic-reimport.md](docs/atomic-reimport.md) for details.
+
+#### Option 2: Full Reset (Clean Slate)
+
+Use this when you want to completely reset the database:
+
+```bash
+./scripts/reset-and-reimport
+```
+
+**Warning:** This deletes ALL data including enrichments!
+
+### Event Key System
+
+The timeline uses a deterministic `event_key` system (SHA-256 hash) to maintain relationships between:
+- **First-order data**: Raw Wikipedia events in `historical_events`
+- **Second-order data**: Enrichments like categories, interest counts in `event_enrichments` and `event_categories`
+
+Because the key is based on event content (title + dates + description), enrichments survive reimports as long as the event content doesn't change significantly.
+
+See [docs/enrichment-architecture.md](docs/enrichment-architecture.md) for technical details.
+
 ## Development
 
 ### View logs for all services:

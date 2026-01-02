@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Atomic reimport script for Wikipedia data.
+# This script reimports Wikipedia data while preserving enrichments.
+#
+# How it works:
+# 1. Creates a temporary table (historical_events_temp)
+# 2. Imports data into the temp table
+# 3. Atomically swaps temp table with production table
+# 4. Enrichments (event_enrichments, event_categories) survive via event_key
+#
+# Usage:
+#   ./scripts/atomic-reimport [WIKI_MIN_YEAR] [WIKI_MAX_YEAR]
+#
+# Examples:
+#   ./scripts/atomic-reimport                    # Full reimport
+#   ./scripts/atomic-reimport "1000 BC" "2026 AD"  # Specific range
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+COMPOSE="docker compose"
+if docker-compose version >/dev/null 2>&1; then
+  true  # Allow older docker-compose too
+fi
+
+# Set date range if provided
+if [ $# -ge 1 ]; then
+  export WIKI_MIN_YEAR="$1"
+  echo "Setting WIKI_MIN_YEAR=$WIKI_MIN_YEAR"
+fi
+
+if [ $# -ge 2 ]; then
+  export WIKI_MAX_YEAR="$2"
+  echo "Setting WIKI_MAX_YEAR=$WIKI_MAX_YEAR"
+fi
+
+echo "========================================"
+echo "Starting Atomic Reimport"
+echo "========================================"
+echo ""
+echo "This will:"
+echo "  1. Import data into a temporary table"
+echo "  2. Swap tables atomically"
+echo "  3. Preserve all enrichment data (categories, interest counts)"
+echo ""
+echo "Press Ctrl+C to cancel, or wait 3 seconds to continue..."
+sleep 3
+
+echo ""
+echo "Running atomic reimport..."
+$COMPOSE run --rm wikipedia-ingestion python atomic_reimport.py
+
+echo ""
+echo "========================================"
+echo "✅ Atomic Reimport Complete!"
+echo "========================================"

@@ -17,8 +17,8 @@ fi
 echo "Stopping stack..."
 $COMPOSE down
 
-echo "Removing volumes (this deletes ALL DB data)..."
-$COMPOSE down -v
+#echo "Removing volumes (this deletes ALL DB data)..."
+#$COMPOSE down -v
 
 echo "Rebuilding and starting stack..."
 $COMPOSE up -d --build
