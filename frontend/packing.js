@@ -119,7 +119,7 @@ class TimelinePacking {
             .map(d => ({ d, span: this.getNumericSpan(d) }))
             .filter(x => x.span !== null);
         
-        // Sort by bin order first, then by time within each bin
+        // Sort by bin order first, then by weight (higher weight = more important), then by time
         intervals.sort((a, b) => {
             const aBin = a.d.bin_num !== undefined ? a.d.bin_num : 999; // Events without bin go last
             const bBin = b.d.bin_num !== undefined ? b.d.bin_num : 999;
@@ -127,17 +127,25 @@ class TimelinePacking {
             const aPriority = binPriority.get(aBin) !== undefined ? binPriority.get(aBin) : 999;
             const bPriority = binPriority.get(bBin) !== undefined ? binPriority.get(bBin) : 999;
             
-            // Primary sort: by bin priority
+            // Primary sort: by bin priority (center bins first)
             if (aPriority !== bPriority) {
                 return aPriority - bPriority;
             }
             
-            // Secondary sort: by start time within bin
+            // Secondary sort: by weight (DESCENDING - higher weight first)
+            // Events with higher weight (more days) are more important and get priority placement
+            const aWeight = a.d.weight !== undefined ? a.d.weight : 0;
+            const bWeight = b.d.weight !== undefined ? b.d.weight : 0;
+            if (aWeight !== bWeight) {
+                return bWeight - aWeight; // Descending: higher weight first
+            }
+            
+            // Tertiary sort: by start time within bin
             if (a.span.start !== b.span.start) {
                 return a.span.start - b.span.start;
             }
             
-            // Tertiary sort: by end time
+            // Quaternary sort: by end time
             return a.span.end - b.span.end;
         });
         
