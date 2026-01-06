@@ -85,6 +85,11 @@ class TimelineOrchestrator {
         return this.laneAssignments.get(eventId);
     }
     
+    // Get all lane assignments
+    getLaneAssignments() {
+        return this.laneAssignments;
+    }
+    
     // Get total lanes
     getTotalLanes() {
         return this.totalLanes;

@@ -12,6 +12,7 @@ class TimelinePacking {
         this.globalTotalLanes = 1;
         this.lastTransformK = 1; // Track zoom level to detect zoom vs pan
         this.currentViewportDomain = null; // Track current viewport [start, end]
+        this.frozenEventIds = new Set(); // Track events that have been in center bins during current pan session
         
         // Subscribe to events and scale changes
         this.orchestrator.subscribe('events', (events) => this.packEvents(events));
@@ -82,10 +83,21 @@ class TimelinePacking {
     
     /**
      * Calculate lane assignments using bounding box collision detection
+     * 
+     * Events are processed by bin in a specific order to ensure viewport events
+     * are packed first (preventing collisions), followed by buffer events:
+     * 1. Center bins (7,8,6,9,5) - viewport events
+     * 2. Right bins (4,3,2,1,0) - right buffer
+     * 3. Left bins (10,11,12,13,14) - left buffer
      */
     calculateLanes(renderData, scale, maxLanes = Infinity, isPan = false) {
         const sublaneById = new Map();
         const skippedEvents = [];
+        
+        console.log(`[Packing] ========================================`);
+        console.log(`[Packing] DEBUG: calculateLanes called`);
+        console.log(`[Packing] DEBUG: isPan=${isPan}, events=${renderData.length}, maxLanes=${maxLanes}`);
+        console.log(`[Packing] ========================================`);
         
         // Get viewport bounds for sticky lane logic
         const viewportBounds = this.currentViewportDomain ? {
@@ -93,14 +105,49 @@ class TimelinePacking {
             end: this.currentViewportDomain[1]
         } : null;
         
-        // Sort events by start time for left-to-right processing
+        // Define bin processing order (center-out)
+        const binOrder = [7, 8, 6, 9, 5, 4, 3, 2, 1, 0, 10, 11, 12, 13, 14];
+        
+        // Create a mapping from bin_num to sort priority
+        const binPriority = new Map();
+        binOrder.forEach((binNum, index) => {
+            binPriority.set(binNum, index);
+        });
+        
+        // Process events with span information
         const intervals = renderData
             .map(d => ({ d, span: this.getNumericSpan(d) }))
-            .filter(x => x.span !== null)
-            .sort((a, b) => {
-                if (a.span.start !== b.span.start) return a.span.start - b.span.start;
-                return a.span.end - b.span.end;
-            });
+            .filter(x => x.span !== null);
+        
+        // Sort by bin order first, then by time within each bin
+        intervals.sort((a, b) => {
+            const aBin = a.d.bin_num !== undefined ? a.d.bin_num : 999; // Events without bin go last
+            const bBin = b.d.bin_num !== undefined ? b.d.bin_num : 999;
+            
+            const aPriority = binPriority.get(aBin) !== undefined ? binPriority.get(aBin) : 999;
+            const bPriority = binPriority.get(bBin) !== undefined ? binPriority.get(bBin) : 999;
+            
+            // Primary sort: by bin priority
+            if (aPriority !== bPriority) {
+                return aPriority - bPriority;
+            }
+            
+            // Secondary sort: by start time within bin
+            if (a.span.start !== b.span.start) {
+                return a.span.start - b.span.start;
+            }
+            
+            // Tertiary sort: by end time
+            return a.span.end - b.span.end;
+        });
+        
+        console.log('[Packing] Processing', intervals.length, 'events in bin order:', binOrder);
+        
+        // During PAN: Log how many events have cached lanes (will be frozen)
+        if (isPan) {
+            const eventsWithCache = intervals.filter(x => this.globalLaneAssignments.has(x.d.id)).length;
+            console.log(`[Packing] DEBUG: During PAN - ${eventsWithCache} events have cached lanes (will be frozen)`);
+        }
         
         // Track what's in each lane: array of {eventId, bbox} objects
         const lanes = [];
@@ -130,16 +177,20 @@ class TimelinePacking {
             let placed = false;
             const cachedLane = this.globalLaneAssignments.get(d.id);
             
-            // Check if event should stick to its lane during pan (stretch goal: fully visible)
-            const shouldStick = isPan && cachedLane !== undefined && 
-                                this.isEventFullyInViewport(span, viewportBounds);
+            // During PAN: ALL events with cached lanes are frozen (keep their lanes)
+            // This prevents any re-packing during pan - events stay stable
+            // Only new events (without cached lanes) get packed dynamically
+            const shouldFreeze = isPan && cachedLane !== undefined;
+            
+            if (shouldFreeze) {
+                console.log(`[Packing] DEBUG: FREEZING event ${d.id} (bin ${d.bin_num}) in lane ${cachedLane}`);
+            }
             
             const lanesToTry = [];
             
-            if (shouldStick) {
-                // During pan, if event is fully visible, ONLY try its cached lane
+            if (shouldFreeze) {
+                // During pan, frozen events ONLY try their cached lane, no alternatives
                 lanesToTry.push(cachedLane);
-                console.log('[Packing] Sticky lane for event', d.id, '- keeping in lane', cachedLane);
             } else {
                 // Build priority list: cached lane first, then 0 to maxLanes
                 if (cachedLane !== undefined && cachedLane < maxLanes) {
@@ -158,7 +209,7 @@ class TimelinePacking {
                     lanes[laneIdx] = [];
                 }
                 
-                // Check for HORIZONTAL collisions only
+                // Check for HORIZONTAL collisions
                 const hasCollision = lanes[laneIdx].some(existing => {
                     return this.boxesOverlapHorizontally(globalBbox, existing.bbox);
                 });
@@ -169,17 +220,34 @@ class TimelinePacking {
                     lanes[laneIdx].push({ eventId: d.id, bbox: globalBbox });
                     this.globalLaneAssignments.set(d.id, laneIdx);
                     placed = true;
+                    
+                    if (shouldFreeze && laneIdx !== cachedLane) {
+                        console.log(`[Packing] NOTE: Frozen event ${d.id} moved from lane ${cachedLane} to ${laneIdx} to avoid collision`);
+                    }
                     break;
                 }
             }
             
             if (!placed) {
+                // Event couldn't find a collision-free lane
+                if (shouldFreeze) {
+                    console.log(`[Packing] Event ${d.id} (frozen, was in lane ${cachedLane}) couldn't find collision-free placement - skipping`);
+                }
                 skippedEvents.push(d.id);
             }
         }
         
         const totalLanes = lanes.length || 1;
         this.globalTotalLanes = Math.max(this.globalTotalLanes, totalLanes);
+        
+        // Clean up globalLaneAssignments - remove stale IDs that aren't in sublaneById
+        // This prevents accumulation of old event IDs from previous packs
+        const currentEventIds = new Set(sublaneById.keys());
+        for (const eventId of this.globalLaneAssignments.keys()) {
+            if (!currentEventIds.has(eventId)) {
+                this.globalLaneAssignments.delete(eventId);
+            }
+        }
         
         return { sublaneById, totalLanes: this.globalTotalLanes, skippedEvents };
     }

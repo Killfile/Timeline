@@ -59,6 +59,7 @@ class HistoricalEvent(BaseModel):
     categories: List[CategoryEnrichment] = []  # New: All categories (Wikipedia + LLM)
     wikipedia_url: Optional[str] = None
     display_year: Optional[str] = None
+    bin_num: Optional[int] = None  # For 15-bin system (0-14)
 
 
 class TimelineStats(BaseModel):
@@ -401,6 +402,133 @@ def get_events(
                 event['display_year'] = format_year_display(event['start_year'], event['is_bc_start'])
             
             # Add enrichment categories
+            event['categories'] = enrichments.get(event['id'], [])
+        
+        return events
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/events/bins", response_model=List[HistoricalEvent])
+def get_events_by_bins(
+    viewport_center: float = Query(..., description="Center of viewport (fractional year, negative for BC)"),
+    viewport_span: float = Query(..., description="Span of viewport in years"),
+    zone: str = Query(..., description="Which zone to load: 'left', 'center', or 'right'"),
+    category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
+    limit: int = Query(100, ge=1, le=1000, description="Number of events to return per bin")
+):
+    """
+    Load events for a 5-bin zone in the 15-bin timeline system.
+    
+    The 15-bin system divides the timeline into:
+    - Left buffer: bins 0-4 (earlier than viewport)
+    - Center viewport: bins 5-9 (visible)
+    - Right buffer: bins 10-14 (later than viewport)
+    
+    Each bin covers viewport_span / 5 years.
+    
+    Args:
+        viewport_center: Center point of the visible viewport (negative for BC years)
+        viewport_span: Width of the visible viewport in years
+        zone: Which 5-bin zone to load ('left', 'center', or 'right')
+        category: Optional list of categories to filter by
+        limit: Max events per bin
+    
+    Returns:
+        List of events with bin metadata, ordered by weight within each bin
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Calculate bin boundaries
+        bin_width = viewport_span / 5
+        
+        # Define zone boundaries relative to viewport center
+        if zone == 'left':
+            # Bins 0-4: left buffer (earlier than viewport)
+            zone_start = viewport_center - viewport_span * 1.5  # 1.5 viewports before center
+            zone_end = viewport_center - viewport_span * 0.5    # 0.5 viewports before center
+            bin_offset = 0
+        elif zone == 'center':
+            # Bins 5-9: center viewport (visible)
+            zone_start = viewport_center - viewport_span * 0.5  # 0.5 viewports before center
+            zone_end = viewport_center + viewport_span * 0.5    # 0.5 viewports after center
+            bin_offset = 5
+        elif zone == 'right':
+            # Bins 10-14: right buffer (later than viewport)
+            zone_start = viewport_center + viewport_span * 0.5  # 0.5 viewports after center
+            zone_end = viewport_center + viewport_span * 1.5    # 1.5 viewports after center
+            bin_offset = 10
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid zone: {zone}. Must be 'left', 'center', or 'right'")
+        
+        # Create 5 bins for this zone
+        query_parts = []
+        params = []
+        
+        for i in range(5):
+            bin_num = bin_offset + i
+            bin_start = zone_start + (i * bin_width)
+            bin_end = zone_start + ((i + 1) * bin_width)
+            
+            # Event overlaps bin if: event_start <= bin_end AND event_end >= bin_start
+            subquery = """
+                (SELECT id, title, description, start_year, start_month, start_day,
+                        end_year, end_month, end_day,
+                        is_bc_start, is_bc_end, weight, precision, category, wikipedia_url,
+                        %s as bin_num,
+                        ROW_NUMBER() OVER (ORDER BY weight DESC, id) as rank_in_bin
+                 FROM historical_events
+                 WHERE weight IS NOT NULL
+                   AND start_year IS NOT NULL
+                   AND end_year IS NOT NULL
+                   AND to_fractional_year(start_year, is_bc_start, start_month, start_day) <= %s
+                   AND to_fractional_year(end_year, is_bc_end, end_month, end_day) >= %s
+            """
+            params.extend([bin_num, bin_end, bin_start])
+            
+            # Handle multiple categories
+            if category and len(category) > 0:
+                placeholders = ','.join(['%s'] * len(category))
+                subquery += f"""
+                   AND (category IN ({placeholders})
+                        OR event_key IN (
+                            SELECT event_key FROM event_categories 
+                            WHERE category IN ({placeholders})
+                        ))
+                """
+                params.extend(category)
+                params.extend(category)
+            
+            subquery += " ORDER BY weight DESC, id LIMIT %s)"
+            params.append(limit)
+            
+            query_parts.append(subquery)
+        
+        # Union all bins
+        query = " UNION ALL ".join(query_parts)
+        query = f"""
+            SELECT id, title, description, start_year, start_month, start_day,
+                   end_year, end_month, end_day,
+                   is_bc_start, is_bc_end, weight, precision, category, wikipedia_url, bin_num
+            FROM ({query}) AS zone_bins
+            ORDER BY bin_num, rank_in_bin
+        """
+        
+        cursor.execute(query, params)
+        events = cursor.fetchall()
+        
+        # Fetch enrichment categories
+        event_ids = [event['id'] for event in events]
+        enrichments = fetch_event_enrichments(conn, event_ids)
+        
+        # Add display year and enrichments
+        for event in events:
+            if event['start_year']:
+                event['display_year'] = format_year_display(event['start_year'], event['is_bc_start'])
             event['categories'] = enrichments.get(event['id'], [])
         
         return events

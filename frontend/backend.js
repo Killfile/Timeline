@@ -76,6 +76,53 @@ class TimelineBackend {
     }
     
     /**
+     * Load events for a specific zone in the 15-bin system.
+     * 
+     * @param {Object} params - Query parameters
+     * @param {number} params.viewportCenter - Center of the viewport (fractional year, negative for BC)
+     * @param {number} params.viewportSpan - Width of the viewport in years
+     * @param {string} params.zone - Which zone to load: 'left', 'center', or 'right'
+     * @param {Array} params.categories - Optional array of categories to filter
+     * @param {number} params.limit - Maximum events per bin (default 100)
+     * @returns {Promise<Array>} Array of events with bin metadata
+     */
+    async loadEventsByBins(params) {
+        try {
+            let url = `${this.apiUrl}/events/bins?viewport_center=${params.viewportCenter}&viewport_span=${params.viewportSpan}&zone=${params.zone}&limit=${params.limit || 100}`;
+            
+            // Handle category filtering
+            const shouldFilterCategories = params.categories && 
+                                          Array.isArray(params.categories) && 
+                                          params.categories.length > 0 &&
+                                          this.totalCategoriesCount &&
+                                          params.categories.length < this.totalCategoriesCount;
+            
+            if (shouldFilterCategories) {
+                console.log(`[Backend] Loading ${params.zone} zone with ${params.categories.length} category filters`);
+                params.categories.forEach(cat => {
+                    url += `&category=${encodeURIComponent(cat)}`;
+                });
+            } else {
+                console.log(`[Backend] Loading ${params.zone} zone (all categories)`);
+            }
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const events = await response.json();
+            
+            console.log(`[Backend] Loaded ${events.length} events for ${params.zone} zone`);
+            
+            return events;
+        } catch (error) {
+            console.error(`[Backend] Error loading events for ${params.zone} zone:`, error);
+            throw error;
+        }
+    }
+    
+    /**
      * Update the eventsInScope count based on viewport
      * @param {Object} params - Viewport parameters
      */

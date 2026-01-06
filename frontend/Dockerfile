@@ -4,7 +4,7 @@ WORKDIR /usr/share/nginx/html
 
 # Copy static files
 COPY index.html .
-COPY timeline.js .
+COPY *.js .
 COPY style.css .
 
 # Copy nginx configuration

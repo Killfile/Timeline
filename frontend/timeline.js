@@ -11,6 +11,8 @@
  * and delegates all other concerns (packing, colors, stats, API) to other modules.
  */
 
+console.log('[Timeline] ========== MODULE LOADED - VERSION 2024-01-05 17:00 ==========');
+
 // Configuration constants
 const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`;
 const LANE_HEIGHT = 20;
@@ -21,12 +23,25 @@ const PADDING = 8;
 const MAX_LABELS = 50; // Maximum number of labels to show at once
 const MIN_LABEL_WIDTH = 20; // Minimum pixel width for a label
 
+// DEBUG: Visual indicator for center viewport events (bins 5-9)
+// Set to false to disable black outlines on center events
+const DEBUG_SHOW_CENTER_BINS = true;
+
 // D3 selection references
 let svg, xScale, xAxis, zoom;
 let currentTransform = d3.zoomIdentity;
 let initialTransform = d3.zoomIdentity; // Store initial transform for reset zoom
 let initialDomain = null; // Store initial domain for reset zoom
 let tooltip = null;  // Tooltip for hover preview
+
+// Track last zoom scale factor to detect pan vs zoom
+let lastZoomK = 1;
+
+// Track current operation type for label preservation
+let currentOperationType = 'ZOOM'; // 'PAN' or 'ZOOM'
+
+// Track label visibility state for center events during pan
+let centerEventLabels = new Set(); // Event IDs that have visible labels in center
 
 // Debounce timer for viewport event reloading
 let reloadTimer = null;
@@ -180,11 +195,275 @@ function toYearNumber(year, isBc, month = null, day = null) {
 }
 
 /**
- * Reload events for the current viewport with debouncing
+ * Calculate 15-bin boundaries for the timeline.
+ * 
+ * The 15-bin system divides the timeline into three 5-bin zones:
+ * - Left buffer: bins 0-4 (earlier than viewport, for smooth panning left)
+ * - Center viewport: bins 5-9 (currently visible)
+ * - Right buffer: bins 10-14 (later than viewport, for smooth panning right)
+ * 
+ * Each bin has width = viewport_span / 5.
+ * 
  * @param {number} startYear - Viewport start year (negative for BC)
  * @param {number} endYear - Viewport end year (negative for BC)
+ * @returns {Object} Object with structure:
+ *   {
+ *     viewportCenter: number,
+ *     viewportSpan: number,
+ *     binWidth: number,
+ *     left: { start: number, end: number, bins: [0,1,2,3,4] },
+ *     center: { start: number, end: number, bins: [5,6,7,8,9] },
+ *     right: { start: number, end: number, bins: [10,11,12,13,14] }
+ *   }
  */
-function reloadViewportEvents(startYear, endYear) {
+function calculate15Bins(startYear, endYear) {
+    const viewportSpan = endYear - startYear;
+    const viewportCenter = startYear + (viewportSpan / 2);
+    const binWidth = viewportSpan / 5;
+    
+    // Left buffer: extends 1 viewport width before the viewport start
+    const leftStart = viewportCenter - (viewportSpan * 1.5);
+    const leftEnd = viewportCenter - (viewportSpan * 0.5);
+    
+    // Center viewport: the currently visible area
+    const centerStart = viewportCenter - (viewportSpan * 0.5);
+    const centerEnd = viewportCenter + (viewportSpan * 0.5);
+    
+    // Right buffer: extends 1 viewport width after the viewport end
+    const rightStart = viewportCenter + (viewportSpan * 0.5);
+    const rightEnd = viewportCenter + (viewportSpan * 1.5);
+    
+    return {
+        viewportCenter,
+        viewportSpan,
+        binWidth,
+        left: {
+            start: leftStart,
+            end: leftEnd,
+            bins: [0, 1, 2, 3, 4]
+        },
+        center: {
+            start: centerStart,
+            end: centerEnd,
+            bins: [5, 6, 7, 8, 9]
+        },
+        right: {
+            start: rightStart,
+            end: rightEnd,
+            bins: [10, 11, 12, 13, 14]
+        }
+    };
+}
+
+/**
+ * Recalculate bin assignments for all loaded events based on current viewport.
+ * This allows immediate visual feedback during pan/zoom without waiting for API reload.
+ * 
+ * @param {number} startYear - Current viewport start year (negative for BC)
+ * @param {number} endYear - Current viewport end year (negative for BC)
+ */
+function updateEventBinAssignments(startYear, endYear) {
+    const events = window.timelineOrchestrator.getEvents();
+    if (!events || events.length === 0) return;
+    
+    // Calculate current 15-bin boundaries
+    const binConfig = calculate15Bins(startYear, endYear);
+    const binWidth = binConfig.binWidth;
+    
+    // Update bin_num for each event based on its midpoint
+    events.forEach(event => {
+        // Calculate event's temporal midpoint
+        const eventStart = toYearNumber(event.start_year, event.is_bc_start, event.start_month, event.start_day);
+        const eventEnd = event.end_year !== null && event.end_year !== undefined
+            ? toYearNumber(event.end_year, event.is_bc_end, event.end_month, event.end_day)
+            : eventStart;
+        
+        if (eventStart === null || eventEnd === null) {
+            event.bin_num = null;
+            return;
+        }
+        
+        const eventMidpoint = (eventStart + eventEnd) / 2;
+        
+        // Determine which bin (0-14) contains this midpoint
+        // Bins are arranged: [left buffer 0-4][center viewport 5-9][right buffer 10-14]
+        const leftStart = binConfig.left.start;
+        const rightEnd = binConfig.right.end;
+        
+        // Check if event is outside the 15-bin range
+        if (eventMidpoint < leftStart || eventMidpoint > rightEnd) {
+            event.bin_num = null;
+            return;
+        }
+        
+        // Calculate which bin (0-14) the midpoint falls into
+        const binIndex = Math.floor((eventMidpoint - leftStart) / binWidth);
+        event.bin_num = Math.max(0, Math.min(14, binIndex));
+    });
+    
+    // Update visual styling immediately without full re-render
+    updateEventStrokes();
+}
+
+/**
+ * Update stroke styling for all rendered events based on their bin_num.
+ * Called after bin assignments change to provide immediate visual feedback.
+ */
+function updateEventStrokes() {
+    if (!DEBUG_SHOW_CENTER_BINS) return;
+    
+    // Update circle strokes (moment events)
+    svg.selectAll('.event-group circle.timeline-event')
+        .attr('stroke', d => {
+            if (d.bin_num >= 5 && d.bin_num <= 9) {
+                return '#000';
+            }
+            return '#fff';
+        })
+        .attr('stroke-width', d => {
+            if (d.bin_num >= 5 && d.bin_num <= 9) {
+                return 3;
+            }
+            return 2;
+        });
+    
+    // Update rect strokes (span events)
+    svg.selectAll('.event-group rect.timeline-span')
+        .attr('stroke', d => {
+            if (d.bin_num >= 5 && d.bin_num <= 9) {
+                return '#000';
+            }
+            return 'none';
+        })
+        .attr('stroke-width', d => {
+            if (d.bin_num >= 5 && d.bin_num <= 9) {
+                return 2;
+            }
+            return 0;
+        });
+}
+
+/**
+ * Load events for all three zones (left buffer, center viewport, right buffer) in parallel.
+ * Uses the 15-bin system to load buffer zones around the viewport.
+ * 
+ * @param {number} startYear - Viewport start year (negative for BC)
+ * @param {number} endYear - Viewport end year (negative for BC)
+ * @param {boolean} skipCenter - If true, skip loading center zone (for pan operations)
+ * @returns {Promise<Object>} Object with arrays: { left: [], center: [], right: [] }
+ */
+async function loadThreeZones(startYear, endYear, skipCenter = false) {
+    try {
+        // Calculate 15-bin boundaries
+        const binConfig = calculate15Bins(startYear, endYear);
+        
+        // Get selected categories from orchestrator
+        const selectedCategories = window.timelineOrchestrator.getSelectedCategories();
+        
+        console.log(`[Timeline] ========================================`);
+        console.log(`[Timeline] DEBUG: Loading zones`);
+        console.log(`[Timeline] DEBUG: skipCenter=${skipCenter}, center=${binConfig.viewportCenter.toFixed(1)}, span=${binConfig.viewportSpan.toFixed(1)}`);
+        console.log(`[Timeline] ========================================`);
+        
+        // Build promises array - conditionally include center
+        const promises = [];
+        const zoneNames = [];
+        
+        // Always load left buffer
+        promises.push(window.timelineBackend.loadEventsByBins({
+            viewportCenter: binConfig.viewportCenter,
+            viewportSpan: binConfig.viewportSpan,
+            zone: 'left',
+            categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+            limit: 100
+        }));
+        zoneNames.push('left');
+        
+        // Conditionally load center
+        if (!skipCenter) {
+            promises.push(window.timelineBackend.loadEventsByBins({
+                viewportCenter: binConfig.viewportCenter,
+                viewportSpan: binConfig.viewportSpan,
+                zone: 'center',
+                categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+                limit: 100
+            }));
+            zoneNames.push('center');
+        }
+        
+        // Always load right buffer
+        promises.push(window.timelineBackend.loadEventsByBins({
+            viewportCenter: binConfig.viewportCenter,
+            viewportSpan: binConfig.viewportSpan,
+            zone: 'right',
+            categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+            limit: 100
+        }));
+        zoneNames.push('right');
+        
+        // Execute all API calls
+        const results = await Promise.all(promises);
+        
+        // Map results back to zone names
+        const leftEvents = results[0];
+        const centerEvents = skipCenter ? [] : results[1];
+        const rightEvents = skipCenter ? results[1] : results[2];
+        
+        console.log(`[Timeline] ========================================`);
+        console.log(`[Timeline] DEBUG: Zone loading results`);
+        console.log(`[Timeline] DEBUG: left=${leftEvents.length}, center=${centerEvents.length} (skipped=${skipCenter}), right=${rightEvents.length}`);
+        console.log(`[Timeline] ========================================`);
+        
+        // Combine events
+        let allEvents;
+        if (skipCenter) {
+            // During PAN: Simple 1:1 replacement strategy (like labels)
+            // 1. Keep existing placed events
+            // 2. Add new buffer events
+            const existingEvents = window.timelineOrchestrator.getEvents();
+            const existingIds = new Set(existingEvents.map(e => e.id));
+            
+            // Add new buffer events (from left/right loads) that aren't duplicates
+            const newLeftEvents = leftEvents.filter(e => !existingIds.has(e.id));
+            const newRightEvents = rightEvents.filter(e => !existingIds.has(e.id));
+            
+            allEvents = [...existingEvents, ...newLeftEvents, ...newRightEvents];
+            
+            console.log(`[Timeline] ========================================`);
+            console.log(`[Timeline] DEBUG: PAN - Kept ${existingEvents.length} existing events`);
+            console.log(`[Timeline] DEBUG: PAN - Added ${newLeftEvents.length} left + ${newRightEvents.length} right buffer events`);
+            console.log(`[Timeline] DEBUG: Total events: ${allEvents.length}`);
+            console.log(`[Timeline] ========================================`);
+        } else {
+            // ZOOM: Full reload from all zones
+            allEvents = [...leftEvents, ...centerEvents, ...rightEvents];
+            console.log(`[Timeline] DEBUG: ZOOM - Full reload: ${allEvents.length} events`);
+        }
+        
+        window.timelineOrchestrator.setEvents(allEvents);
+        
+        return {
+            left: leftEvents,
+            center: centerEvents,
+            right: rightEvents,
+            binConfig
+        };
+        
+    } catch (error) {
+        console.error('[Timeline] Error loading three zones:', error);
+        throw error;
+    }
+}
+
+/**
+ * Reload events for the current viewport with debouncing
+ * Uses the 15-bin system to load events in three zones (left buffer, center viewport, right buffer).
+ * 
+ * @param {number} startYear - Viewport start year (negative for BC)
+ * @param {number} endYear - Viewport end year (negative for BC)
+ * @param {boolean} isPan - If true, skip center zone reload and repacking (pan operation)
+ */
+function reloadViewportEvents(startYear, endYear, isPan = false) {
     // Clear existing timer
     if (reloadTimer) {
         clearTimeout(reloadTimer);
@@ -193,48 +472,19 @@ function reloadViewportEvents(startYear, endYear) {
     // Debounce: wait for user to stop zooming/panning
     reloadTimer = setTimeout(async () => {
         try {
-            const isStartBC = startYear < 0;
-            const isEndBC = endYear < 0;
+            console.log(`[Timeline] ========================================`);
+            console.log(`[Timeline] DEBUG: Reloading viewport events`);
+            console.log(`[Timeline] DEBUG: isPan=${isPan}, startYear=${startYear.toFixed(1)}, endYear=${endYear.toFixed(1)}`);
+            console.log(`[Timeline] ========================================`);
             
-            // Get selected categories from orchestrator
-            const selectedCategories = window.timelineOrchestrator.getSelectedCategories();
+            // Load zones - skip center on pan to preserve viewport events
+            await loadThreeZones(startYear, endYear, isPan);
             
-            // Use floor/ceil to ensure we capture all events partially visible in viewport
-            // For AD years (positive): floor start (earlier), ceil end (later)
-            // For BC years (negative): ceil start (more negative = earlier), floor end (less negative = later)
-            let viewportStartAbs, viewportEndAbs;
+            console.log('[Timeline] Successfully loaded zones');
             
-            if (isStartBC) {
-                viewportStartAbs = Math.abs(Math.ceil(startYear));
-            } else {
-                viewportStartAbs = Math.abs(Math.floor(startYear));
-            }
-            
-            if (isEndBC) {
-                viewportEndAbs = Math.abs(Math.floor(endYear));
-            } else {
-                viewportEndAbs = Math.abs(Math.ceil(endYear));
-            }
-            
-            console.log(`[Timeline] Loading events for viewport: ${isStartBC ? viewportStartAbs + ' BC' : viewportStartAbs + ' AD'} to ${isEndBC ? viewportEndAbs + ' BC' : viewportEndAbs + ' AD'}`);
-            console.log(`[Timeline] Category filter: ${selectedCategories.length} categories selected`);
-            
-            // Load events for this viewport with category filter
-            const events = await window.timelineBackend.loadViewportEvents({
-                viewportStart: viewportStartAbs,
-                viewportEnd: viewportEndAbs,
-                isStartBC,
-                isEndBC,
-                limit: 1000,
-                categories: selectedCategories.length > 0 ? selectedCategories : undefined
-            });
-            
-            console.log(`[Timeline] Loaded ${events.length} events for viewport`);
-            
-            // Events are already set in orchestrator by backend
             // The packing module will automatically repack using the current transformed scale
-            // because backend.setEvents() triggers the 'events' notification
-            // Note: eventsInScope will be updated by render() after filtering to visible events
+            // because loadThreeZones() -> setEvents() triggers the 'events' notification
+            // Note: On pan, center events are preserved so they won't be repacked
             
         } catch (error) {
             console.error('[Timeline] Error reloading viewport events:', error);
@@ -542,6 +792,23 @@ function handleFullscreenChange() {
 function handleZoom(event) {
     currentTransform = event.transform;
     
+    // Detect if this is a pan (scale unchanged) or zoom (scale changed)
+    const currentZoomK = event.transform.k;
+    const isPan = Math.abs(currentZoomK - lastZoomK) < 0.0001;
+    const operationType = isPan ? 'PAN' : 'ZOOM';
+    
+    console.log(`[Timeline] ========================================`);
+    console.debug(`[Timeline] DEBUG: ${operationType} operation detected`);
+    console.log(`[Timeline] DEBUG: ${operationType} operation detected`);
+    console.log(`[Timeline] DEBUG: Current k=${currentZoomK.toFixed(4)}, Last k=${lastZoomK.toFixed(4)}, Diff=${Math.abs(currentZoomK - lastZoomK).toFixed(6)}`);
+    console.log(`[Timeline] ========================================`);
+    
+    // Update last zoom level for next comparison
+    lastZoomK = currentZoomK;
+    
+    // Set global operation type for label preservation
+    currentOperationType = operationType;
+    
     // Rescale the X axis with the new transform
     const newXScale = event.transform.rescaleX(xScale);
     
@@ -574,9 +841,21 @@ function handleZoom(event) {
 
     // Reapply positions to all event groups using the new scale
     applyPositions(newXScale);
+    
+    // Update bin assignments ONLY during ZOOM, not during PAN
+    // During PAN: Events keep their spatial zones (left/center/right) from when they were loaded
+    // During ZOOM: Recalculate bins for all events based on new viewport
+    if (!isPan) {
+        console.log('[Timeline] ZOOM - Updating bin assignments for all events');
+        updateEventBinAssignments(newDomain[0], newDomain[1]);
+    } else {
+        console.log('[Timeline] PAN - Skipping bin assignment update (preserving spatial zones)');
+    }
 
-    // Reload events for the new viewport (debounced)
-    reloadViewportEvents(newDomain[0], newDomain[1]);
+    // Reload events for the new viewport using 15-bin system (debounced)
+    // On PAN: skip center zone reload and repacking
+    // On ZOOM: reload all zones and repack everything
+    reloadViewportEvents(newDomain[0], newDomain[1], isPan);
 }
 
 /**
@@ -612,12 +891,21 @@ function applyPositions(scale) {
         const width = Math.abs(ex - sx);
         const centerX = (sx + ex) / 2; // Calculate center position for sorting
         
+        // Check visibility: on-screen AND in near buffer zones (about to enter screen)
+        // Use 50% of screen width buffer on each side so labels appear well before events are visible
+        const bufferMargin = window.innerWidth * 0.5;
+        const isVisibleOnScreen = centerX >= 0 && centerX <= window.innerWidth;
+        const isNearScreen = centerX >= -bufferMargin && centerX <= window.innerWidth + bufferMargin;
+        
         eventWidths.push({
             id: d.id,
             width: width,
             weight: d.weight || 0,
             hasSpan: hasSpan(d),
-            centerX: centerX
+            centerX: centerX,
+            bin: d.bin_num,
+            isVisibleOnScreen: isVisibleOnScreen,
+            isNearScreen: isNearScreen
         });
     });
     
@@ -628,25 +916,91 @@ function applyPositions(scale) {
     
     const totalLabelable = labelCandidates.length;
     
-    // Calculate interval for even distribution
-    let selectedLabels = [];
-    if (totalLabelable <= MAX_LABELS) {
-        // If we have fewer candidates than max labels, show them all
-        selectedLabels = labelCandidates.map(e => e.id);
-    } else {
-        // Select every Nth event to distribute evenly across the timeline
-        const interval = totalLabelable / MAX_LABELS;
-        for (let i = 0; i < MAX_LABELS; i++) {
-            const index = Math.floor(i * interval);
-            if (index < labelCandidates.length) {
-                selectedLabels.push(labelCandidates[index].id);
+    let shouldShowLabel;
+    
+    // During PAN: Replace labels that left the screen with labels entering from buffer
+    if (currentOperationType === 'PAN') {
+        // Step 1: Identify which cached labels are now off-screen (left the visible area)
+        const visibleEventIds = new Set(labelCandidates.filter(e => e.isVisibleOnScreen).map(e => e.id));
+        const labelsNowOffScreen = [];
+        for (const eventId of centerEventLabels) {
+            if (!visibleEventIds.has(eventId)) {
+                labelsNowOffScreen.push(eventId);
             }
         }
+        
+        console.log(`[Timeline] DEBUG: PAN - ${labelsNowOffScreen.length} labels moved off-screen`);
+        
+        // Step 2: Keep only labels still on screen
+        shouldShowLabel = new Set();
+        for (const eventId of centerEventLabels) {
+            if (visibleEventIds.has(eventId)) {
+                shouldShowLabel.add(eventId);
+            }
+        }
+        
+        // Step 3: Find candidates in buffer zones (off-screen) that need labels
+        const bufferCandidates = labelCandidates.filter(e => {
+            // Events in buffer (off-screen) that don't have labels yet
+            return !e.isVisibleOnScreen && !centerEventLabels.has(e.id);
+        });
+        
+        // Sort by distance from screen edges (closest first)
+        bufferCandidates.sort((a, b) => {
+            const distA = a.centerX < 0 ? Math.abs(a.centerX) : Math.abs(a.centerX - window.innerWidth);
+            const distB = b.centerX < 0 ? Math.abs(b.centerX) : Math.abs(b.centerX - window.innerWidth);
+            return distA - distB;
+        });
+        
+        console.log(`[Timeline] DEBUG: PAN - Found ${bufferCandidates.length} buffer candidates for labeling`);
+        
+        // Step 4: Add labels to buffer events to replace ones that left
+        const labelsToAdd = Math.min(labelsNowOffScreen.length, bufferCandidates.length, MAX_LABELS - shouldShowLabel.size);
+        console.log(`[Timeline] DEBUG: PAN - Adding ${labelsToAdd} labels to buffer events (replacing off-screen labels)`);
+        
+        for (let i = 0; i < labelsToAdd; i++) {
+            const eventId = bufferCandidates[i].id;
+            shouldShowLabel.add(eventId);
+            centerEventLabels.add(eventId);
+        }
+        
+        // Step 5: Remove off-screen labels from cache
+        for (const eventId of labelsNowOffScreen) {
+            centerEventLabels.delete(eventId);
+        }
+        
+        console.log(`[Timeline] DEBUG: PAN - Using ${shouldShowLabel.size} total labels (${centerEventLabels.size} in cache)`);
+    } else {
+        // During ZOOM: Calculate labels fresh
+        let selectedLabels = [];
+        if (totalLabelable <= MAX_LABELS) {
+            // If we have fewer candidates than max labels, show them all
+            selectedLabels = labelCandidates.map(e => e.id);
+        } else {
+            // Select every Nth event to distribute evenly across the timeline
+            const interval = totalLabelable / MAX_LABELS;
+            for (let i = 0; i < MAX_LABELS; i++) {
+                const index = Math.floor(i * interval);
+                if (index < labelCandidates.length) {
+                    selectedLabels.push(labelCandidates[index].id);
+                }
+            }
+        }
+        
+        shouldShowLabel = new Set(selectedLabels);
+        
+        // Save on-screen labels for next pan
+        centerEventLabels.clear();
+        const selectedEventSet = new Set(selectedLabels);
+        eventWidths.forEach(e => {
+            if (e.isVisibleOnScreen && selectedEventSet.has(e.id)) {
+                centerEventLabels.add(e.id);
+            }
+        });
+        console.log(`[Timeline] DEBUG: ZOOM - Calculated labels and cached ${centerEventLabels.size} on-screen event labels`);
     }
     
-    const shouldShowLabel = new Set(selectedLabels);
-    
-    console.log(`[Timeline] Label selection: ${totalLabelable} candidates, showing ${selectedLabels.length} labels (interval: ${totalLabelable > MAX_LABELS ? (totalLabelable / MAX_LABELS).toFixed(2) : 'all'})`);
+    console.log(`[Timeline] Label selection: ${totalLabelable} candidates, showing ${shouldShowLabel.size} labels (interval: ${totalLabelable > MAX_LABELS ? (totalLabelable / MAX_LABELS).toFixed(2) : 'all'})`);
     
     // Position each group
     groups.attr('transform', d => {
@@ -741,17 +1095,27 @@ function render() {
     const currentScale = currentTransform.rescaleX(xScale);
     const [viewportStart, viewportEnd] = currentScale.domain();
 
-    // Prepare event data with positions, filtering to only visible events
-    const eventData = events
-        .filter(event => {
-            // Check if event overlaps with viewport
-            const startYear = toYearNumber(event.start_year, event.is_bc_start, event.start_month, event.start_day);
-            const endYear = toYearNumber(event.end_year, event.is_bc_end, event.end_month, event.end_day);
-            if (startYear === null) return false;
-            const eventEndYear = endYear !== null ? endYear : startYear;
-            return eventEndYear >= viewportStart && startYear <= viewportEnd;
-        })
-        .filter(event => laneAssignments.has(event.id)); // Only render placed events
+    // During PAN: Keep ALL currently rendered events to avoid DOM churn
+    // During ZOOM: Filter to only visible events (normal behavior)
+    let eventData;
+    if (currentOperationType === 'PAN') {
+        // Keep all events that have lane assignments - no viewport filtering
+        eventData = events.filter(event => laneAssignments.has(event.id));
+        console.log(`[Timeline] DEBUG: PAN - Keeping all ${eventData.length} placed events (no viewport filter)`);
+    } else {
+        // Normal zoom behavior: filter to viewport
+        eventData = events
+            .filter(event => {
+                // Check if event overlaps with viewport
+                const startYear = toYearNumber(event.start_year, event.is_bc_start, event.start_month, event.start_day);
+                const endYear = toYearNumber(event.end_year, event.is_bc_end, event.end_month, event.end_day);
+                if (startYear === null) return false;
+                const eventEndYear = endYear !== null ? endYear : startYear;
+                return eventEndYear >= viewportStart && startYear <= viewportEnd;
+            })
+            .filter(event => laneAssignments.has(event.id)); // Only render placed events
+        console.log(`[Timeline] DEBUG: ZOOM - Filtered to ${eventData.length} events in viewport (${Math.round(viewportStart)} to ${Math.round(viewportEnd)})`);
+    }
 
     console.log(`[Timeline] After filtering: ${eventData.length} events to render (viewport: ${Math.round(viewportStart)} to ${Math.round(viewportEnd)})`);
 
@@ -760,7 +1124,13 @@ function render() {
         .data(eventData, d => d.id);
 
     // Exit (remove old events)
-    eventGroups.exit().remove();
+    const exitingEvents = eventGroups.exit();
+    if (exitingEvents.size() > 0) {
+        const exitingIds = [];
+        exitingEvents.each(d => exitingIds.push(d.id));
+        console.log(`[Timeline] DEBUG: Removing ${exitingEvents.size()} events:`, exitingIds.slice(0, 5));
+        exitingEvents.remove();
+    }
 
     // Enter (create new events)
     const groupsEnter = eventGroups.enter()
@@ -771,6 +1141,10 @@ function render() {
         .on('mouseover', handleEventMouseOver)
         .on('mousemove', handleEventMouseMove)
         .on('mouseout', handleEventMouseOut);
+    
+    if (groupsEnter.size() > 0) {
+        console.log(`[Timeline] DEBUG: Adding ${groupsEnter.size()} new events`);
+    }
 
     // Span bar (for events with duration)
     groupsEnter.append('rect')
@@ -815,7 +1189,21 @@ function render() {
             // Final fallback to legacy category field
             return categoryColors.get(d.category) || '#999';
         })
-        .style('opacity', d => hasSpan(d) ? 0 : 0.85); // Hide dots for span events
+        .style('opacity', d => hasSpan(d) ? 0 : 0.85) // Hide dots for span events
+        .attr('stroke', d => {
+            // DEBUG: Black outline for center viewport events (bins 5-9)
+            if (DEBUG_SHOW_CENTER_BINS && d.bin_num >= 5 && d.bin_num <= 9) {
+                return '#000';
+            }
+            return '#fff';
+        })
+        .attr('stroke-width', d => {
+            // DEBUG: Thicker stroke for center viewport events
+            if (DEBUG_SHOW_CENTER_BINS && d.bin_num >= 5 && d.bin_num <= 9) {
+                return 3;
+            }
+            return 2;
+        });
 
     groupsMerged.select('rect.timeline-span')
         .attr('fill', d => {
@@ -830,7 +1218,21 @@ function render() {
             // Final fallback to legacy category field
             return categoryColors.get(d.category) || '#999';
         })
-        .style('opacity', d => hasSpan(d) ? 0.75 : 0); // Hide bars for moment events
+        .style('opacity', d => hasSpan(d) ? 0.75 : 0) // Hide bars for moment events
+        .attr('stroke', d => {
+            // DEBUG: Black outline for center viewport events (bins 5-9)
+            if (DEBUG_SHOW_CENTER_BINS && d.bin_num >= 5 && d.bin_num <= 9) {
+                return '#000';
+            }
+            return 'none';
+        })
+        .attr('stroke-width', d => {
+            // DEBUG: Stroke width for center viewport events
+            if (DEBUG_SHOW_CENTER_BINS && d.bin_num >= 5 && d.bin_num <= 9) {
+                return 2;
+            }
+            return 0;
+        });
 
     // Update text content
     groupsMerged.select('text.event-label')
