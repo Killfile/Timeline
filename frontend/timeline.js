@@ -442,6 +442,28 @@ async function loadThreeZones(startYear, endYear, skipCenter = false) {
         
         window.timelineOrchestrator.setEvents(allEvents);
         
+        // Update "events in scope" count for the visible viewport (NOT the full buffer)
+        // Convert viewport center/span to start/end for the count API
+        // Note: viewportCenter is negative for BC, positive for AD
+        let viewportStartYear = binConfig.viewportCenter - (binConfig.viewportSpan / 2);
+        let viewportEndYear = binConfig.viewportCenter + (binConfig.viewportSpan / 2);
+        
+        // Ensure start < end
+        if (viewportStartYear > viewportEndYear) {
+            [viewportStartYear, viewportEndYear] = [viewportEndYear, viewportStartYear];
+        }
+        
+        const countParams = {
+            viewportStart: Math.round(Math.abs(viewportStartYear)),
+            viewportEnd: Math.round(Math.abs(viewportEndYear)),
+            isStartBC: viewportStartYear < 0,
+            isEndBC: viewportEndYear < 0,
+            categories: selectedCategories.length > 0 ? selectedCategories : undefined
+        };
+        
+        console.log(`[Timeline] DEBUG: Updating viewport count with params:`, countParams);
+        await window.timelineBackend.updateViewportCount(countParams);
+        
         return {
             left: leftEvents,
             center: centerEvents,
