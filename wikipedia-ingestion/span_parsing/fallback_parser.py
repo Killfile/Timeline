@@ -25,7 +25,8 @@ class FallbackSpanParser(SpanParserStrategy):
             start_day=1,
             end_month=12,
             end_day=31,
-            is_bc=page_bc,
+            start_year_is_bc=page_bc,
+            end_year_is_bc=page_bc,
             precision=SpanPrecision.CIRCA,
             match_type="Fallback parser using page context"
         )

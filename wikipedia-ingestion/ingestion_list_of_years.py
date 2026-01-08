@@ -37,7 +37,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
-from span_parsing import SpanParser
 from bs4 import BeautifulSoup
 
 try:
@@ -727,7 +726,8 @@ def _process_event_item(
     bullet_text = (b or "").strip()
     #is_circa = bool(re.match(r"^\s*(c\.|ca\.|circa)\b", bullet_text, flags=re.IGNORECASE))
 
-    bullet_span = SpanParser.parse_span_from_bullet(
+    from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+    bullet_span = YearsParseOrchestrator.parse_span_from_bullet(
         bullet_text, scope["start_year"], assume_is_bc=page_assume_is_bc
     )
     
@@ -930,17 +930,17 @@ def _process_year_page(
     )
 
 
-def ingest_wikipedia_list_of_years(conn) -> None:
+def ingest_wikipedia_list_of_years(conn=None) -> None:
     """Main entry point for ingesting events from Wikipedia's List of years.
     
     This function orchestrates a pipeline:
     1. Discover and filter year pages based on min/max year configuration
     2. Process each page to extract event items
     3. Process each event item to build event dicts
-    4. Insert events into the database with deduplication
+    4. Write events to JSON artifact file for later database insertion
     
     Args:
-        conn: Database connection for inserting events
+        conn: Database connection (DEPRECATED - kept for backward compatibility, not used)
     """
     log_info("Starting Wikipedia list-of-years ingestion...")
 
@@ -951,9 +951,9 @@ def ingest_wikipedia_list_of_years(conn) -> None:
         return
 
     # Initialize tracking state
-    total_inserted = 0
     visited_page_keys: set[tuple] = set()
     seen_event_keys: set[tuple] = set()
+    all_events: list[dict] = []
     log_info("Visited-page set initialized (count=0)")
 
     # Pipeline Stage 2 & 3: Process pages and events
@@ -990,11 +990,32 @@ def ingest_wikipedia_list_of_years(conn) -> None:
                 continue
             seen_event_keys.add(event_key)
 
-            # Pipeline Stage 4: Insert event
-            category_value = event.pop("category", None)
-            if insert_event(conn, event, category=category_value):
-                total_inserted += 1
+            # Add to events list (category is part of the event dict)
+            all_events.append(event)
 
-    log_info(f"Inserted {total_inserted} events from list-of-years")
+    # Pipeline Stage 4: Write JSON artifact
+    artifact_path = Path(LOGS_DIR) / f"events_list_of_years_{RUN_ID}.json"
+    artifact_data = {
+        "strategy": "list_of_years",
+        "run_id": RUN_ID,
+        "generated_at_utc": datetime.utcnow().isoformat() + "Z",
+        "event_count": len(all_events),
+        "metadata": {
+            "pages_processed": len(visited_page_keys),
+            "exclusions": exclusions_agg_counts
+        },
+        "events": all_events
+    }
+    
+    try:
+        artifact_path.write_text(
+            json.dumps(artifact_data, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8"
+        )
+        log_info(f"Wrote {len(all_events)} events to artifact: {artifact_path}")
+    except Exception as e:
+        log_error(f"Failed to write artifact file: {e}")
+        raise
+    
     _write_exclusions_report(exclusions_agg_counts, exclusions_agg_samples)
 

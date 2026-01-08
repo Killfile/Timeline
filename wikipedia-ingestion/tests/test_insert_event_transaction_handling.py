@@ -1,4 +1,4 @@
-import ingest_wikipedia as ingest
+import ingestion_common as ingest
 
 
 class _FakeConn:
@@ -56,8 +56,8 @@ def test_insert_event_rolls_back_then_allows_next_insert(monkeypatch):
         "description": "x",
         "start_year": 885,
         "end_year": 885,
-        "is_bc_start": True,
-        "is_bc_end": True,
+        "start_year_is_bc": True,
+        "end_year_is_bc": True,
         "url": "https://en.wikipedia.org/wiki/885_BC",
         "pageid": 1,
         "_debug_extraction": {"method": "test", "matches": [], "snippet": "x"},
@@ -87,8 +87,8 @@ def test_insert_event_includes_weight_days(monkeypatch):
         "description": "x",
         "start_year": 100,
         "end_year": 110,  # 10-year span => 3650
-        "is_bc_start": False,
-        "is_bc_end": False,
+        "start_year_is_bc": False,
+        "end_year_is_bc": False,
         "url": "https://en.wikipedia.org/wiki/Example",
         "pageid": 1,
         "weight": 3650,  # Pre-computed weight

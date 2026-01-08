@@ -11,6 +11,8 @@ class SingleYearMultiMonthDayRangeParser(SpanParserStrategy):
     Example: September 28 – October 2
     """
     
+    
+    
     def parse(self, text: str, page_year: int, page_bc: bool) -> Span | None:
         """Parse date range across multiple months in the same year.
         
@@ -23,17 +25,17 @@ class SingleYearMultiMonthDayRangeParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from span_parsing.span_parser import SpanParser
-        
+        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+        MONTH_NAMES = "(january|february|march|april|may|june|july|august|september|october|november|december)"
         # EG: September 28 – October 2
-        m = re.search(r"(?<!\d)(\w+)\s+(\d{1,2})\s*[–—−-]\s*(\w+)\s+(\d{1,2})", text)
+        m = re.search(rf"^\s*(?<!\d)\b{MONTH_NAMES}\b\s+(\d{{1,2}})\s*[–—−-]\s*\b{MONTH_NAMES}\b\s+(\d{{1,2}})", text, re.IGNORECASE)
         if m:
             start_month_name = m.group(1)
             start_day = int(m.group(2))
             end_month_name = m.group(3)
             end_day = int(m.group(4))
-            start_month = SpanParser.month_name_to_number(start_month_name)
-            end_month = SpanParser.month_name_to_number(end_month_name)
+            start_month = YearsParseOrchestrator.month_name_to_number(start_month_name)
+            end_month = YearsParseOrchestrator.month_name_to_number(end_month_name)
             if start_month is not None and end_month is not None:
                 span = Span(
                     start_year=page_year,
@@ -42,9 +44,10 @@ class SingleYearMultiMonthDayRangeParser(SpanParserStrategy):
                     end_year=page_year,
                     end_month=end_month,
                     end_day=end_day,
-                    is_bc=page_bc,
+                    start_year_is_bc=page_bc,
+                    end_year_is_bc=page_bc,
                     precision=SpanPrecision.EXACT,
                     match_type="Day range across months within page span. EG: Month DD - Month DD"
                 )
-                return SpanParser._return_none_if_invalid(span)
+                return YearsParseOrchestrator._return_none_if_invalid(span)
         return None

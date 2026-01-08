@@ -23,7 +23,7 @@ class YearWithEraParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from span_parsing.span_parser import SpanParser
+        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
         
         # Parse year with an explicit era marker but only at the start of the string
         m = re.search(r"^\s*(\d{1,4})\s*(BC|BCE|AD|CE)\b", text, flags=re.IGNORECASE)
@@ -38,11 +38,12 @@ class YearWithEraParser(SpanParserStrategy):
                 start_day=1,
                 end_month=12,
                 end_day=31,
-                is_bc=is_bc,
+                start_year_is_bc=is_bc,
+                end_year_is_bc=is_bc,
                 precision=SpanPrecision.YEAR_ONLY,
                 match_type=f"Year with explicit era. EG: #### {era}"
             )
-            return SpanParser._return_none_if_invalid(span)
+            return YearsParseOrchestrator._return_none_if_invalid(span)
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:

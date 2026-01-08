@@ -78,6 +78,8 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Target 80%+ code coverage for any new/changed logic.
 - Preference running all tests as part of any changes.
 - Prefer parameterized tests over multiple asserts in a single test.
+- Changes to any code under test coverage MUST include updates to tests to maintain or improve coverage.
+- Run all tests locally as part of any changes.
 
 ### Python
 
@@ -125,3 +127,8 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - AD dates go forwards so 100 AD comes before 200 AD.
 - The cutover from BC to AD goes from 1 BC to 1 AD (there is no year 0).
 - Date ingestion should be in chronological order and respect BC/AD rules.
+- Century based dating like "15th century" should be converted to year ranges (e.g., 1401-1500).
+- 1st century AD means years 1-100
+- 1st century BC means years 100-1 BC
+- There is no year 0 and there is no 0th century.
+

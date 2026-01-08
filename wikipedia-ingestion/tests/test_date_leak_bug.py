@@ -8,7 +8,7 @@ don't have explicit date information.
 import pytest
 from pathlib import Path
 from ingestion_list_of_years import _extract_events_section_items_with_report
-from span_parsing import SpanParser
+from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
 
 
 def test_date_does_not_leak_between_events():
@@ -31,14 +31,14 @@ def test_date_does_not_leak_between_events():
     
     # First event has explicit date
     first_bullet = items[0]["text"]
-    first_span = SpanParser.parse_span_from_bullet(first_bullet, 2, assume_is_bc=True)
+    first_span = YearsParseOrchestrator.parse_span_from_bullet(first_bullet, 2, assume_is_bc=True)
     assert first_span is not None
     assert first_span.start_month == 2
     assert first_span.start_day == 5
     
     # Second event has no date information
     second_bullet = items[1]["text"]
-    second_span = SpanParser.parse_span_from_bullet(second_bullet, 2, assume_is_bc=True)
+    second_span = YearsParseOrchestrator.parse_span_from_bullet(second_bullet, 2, assume_is_bc=True)
     # Jan 1 is assumed due to the fallback parser behavior
     assert second_span.start_month == 1
     assert second_span.start_day == 1
@@ -64,7 +64,7 @@ def test_multiple_events_with_varying_dates():
     
     # Parse each event's span independently
     spans = [
-        SpanParser.parse_span_from_bullet(item["text"], 100, assume_is_bc=False)
+        YearsParseOrchestrator.parse_span_from_bullet(item["text"], 100, assume_is_bc=False)
         for item in items
     ]
     

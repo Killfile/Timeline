@@ -39,7 +39,7 @@ services:
       - pgadmin_data:/var/lib/pgadmin
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
 
-  # Wikipedia Data Ingestion Service
+  # Wikipedia Data Ingestion Service (Extract)
   wikipedia-ingestion:
     build:
       context: ./wikipedia-ingestion
@@ -55,8 +55,35 @@ services:
       # Optional ingestion tuning
       WIKI_MIN_YEAR: ${WIKI_MIN_YEAR:-}  # e.g., "100 BC", "10 AD" - earliest year to ingest
       WIKI_MAX_YEAR: ${WIKI_MAX_YEAR:-}  # e.g., "150 BC", "1962 AD", "1962" - latest year to ingest
+      # Strategy selection
+      WIKIPEDIA_INGEST_STRATEGY: ${WIKIPEDIA_INGEST_STRATEGY:-list_of_years}  # list_of_years, bespoke_events, time_periods, or all
+      WIKIPEDIA_INGEST_STRATEGIES: ${WIKIPEDIA_INGEST_STRATEGIES:-}  # explicit comma-separated list (overrides WIKIPEDIA_INGEST_STRATEGY)
       # OpenAI API key for LLM enrichment
       OPENAI_API_KEY: ${OPEN_AI_API_KEY:-}
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - timeline-network
+    volumes:
+      - ./wikipedia-ingestion:/app
+  
+  # Database Loader Service (Load)
+  database-loader:
+    build:
+      context: ./wikipedia-ingestion
+      dockerfile: Dockerfile
+    container_name: timeline-database-loader
+    command: ["python", "-u", "database_loader.py"]
+    environment:
+      PYTHONUNBUFFERED: 1
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-timeline_history}
+      DB_USER: ${POSTGRES_USER:-timeline_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
+      ARTIFACT_DIR: /app/logs
+      ARTIFACT_PATTERN: "events_*.json"
     depends_on:
       database:
         condition: service_healthy

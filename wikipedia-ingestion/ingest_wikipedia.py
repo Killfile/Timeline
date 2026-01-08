@@ -8,7 +8,7 @@ This file is intentionally thin.
 Implementation lives in:
 - `ingestion_common.py`
 - `ingestion_list_of_years.py`
-- `ingestion_by_category.py`
+- `bespoke_events_strategy.py`
 """
 
 from __future__ import annotations
@@ -19,8 +19,7 @@ import os
 # - `python -u ingest_wikipedia.py` (script execution inside container)
 # - `python -m wikipedia_ingestion.ingest_wikipedia` (package-style)
 try:
-    from .ingestion_common import clear_previously_ingested, connect_db, insert_event, log_error, log_info
-    from .ingestion_list_of_years import ingest_wikipedia_list_of_years
+    from .ingestion_common import log_error, log_info
 
     # Test helper re-exports (used by tests importing from ingest_wikipedia)
     from .ingestion_common import _canonicalize_wikipedia_url, _require_psycopg2, _resolve_page_identity  # noqa: F401
@@ -33,8 +32,7 @@ try:
         #_parse_span_from_bullet,
     )
 except ImportError:  # pragma: no cover
-    from ingestion_common import clear_previously_ingested, connect_db, insert_event, log_error, log_info
-    from ingestion_list_of_years import ingest_wikipedia_list_of_years
+    from ingestion_common import log_error, log_info
 
     # Test helper re-exports
     from ingestion_common import _canonicalize_wikipedia_url, _require_psycopg2, _resolve_page_identity  # noqa: F401
@@ -49,33 +47,80 @@ except ImportError:  # pragma: no cover
 
 
 def ingest() -> None:
-    """Run the ingestion using the configured strategy."""
+    """Run ingestion strategies to generate JSON artifacts.
+    
+    This function ONLY runs strategies to generate artifacts. It does NOT
+    insert to the database. Use database_loader.py to load artifacts into the database.
+    
+    Supports:
+    - WIKIPEDIA_INGEST_STRATEGY=list_of_years (default)
+    - WIKIPEDIA_INGEST_STRATEGY=bespoke_events
+    - WIKIPEDIA_INGEST_STRATEGY=time_periods
+    - WIKIPEDIA_INGEST_STRATEGY=all (runs all registered strategies)
+    - WIKIPEDIA_INGEST_STRATEGIES=list_of_years,bespoke_events,time_periods (explicit list)
+    """
 
     strategy = os.getenv("WIKIPEDIA_INGEST_STRATEGY", "list_of_years").strip().lower()
+    multi_strategies = os.getenv("WIKIPEDIA_INGEST_STRATEGIES", "").strip()
 
-    conn = connect_db()
+    # Lazy imports for new architecture
     try:
-        clear_previously_ingested(conn)
-
-        if strategy in {"list_of_years", "years"}:
-            ingest_wikipedia_list_of_years(conn)
-        elif strategy in {"by_category", "category", "categories"}:
-            # Lazily import to keep unit tests (which don't need this strategy)
-            # from paying the import cost or hitting relative-import issues.
-            try:
-                from .ingestion_by_category import ingest_wikipedia_by_category
-            except ImportError:  # pragma: no cover
-                from ingestion_by_category import ingest_wikipedia_by_category
-
-            ingest_wikipedia_by_category(conn)
+        from .strategies import ListOfYearsStrategy, BespokeEventsStrategy, ListOfTimePeriodsStrategy
+        from .ingestion_common import LOGS_DIR, RUN_ID
+    except ImportError:  # pragma: no cover
+        from strategies import ListOfYearsStrategy, BespokeEventsStrategy, ListOfTimePeriodsStrategy
+        from ingestion_common import LOGS_DIR, RUN_ID
+    
+    from pathlib import Path
+    
+    output_dir = Path(LOGS_DIR)
+    
+    # Determine which strategies to run
+    if multi_strategies:
+        # Explicit list from WIKIPEDIA_INGEST_STRATEGIES
+        strategy_names = [s.strip().lower() for s in multi_strategies.split(",")]
+    elif strategy == "all":
+        # "all" means all available strategies
+        strategy_names = ["list_of_years", "bespoke_events", "time_periods"]
+    else:
+        # Single strategy
+        strategy_names = [strategy]
+    
+    log_info(f"Running {len(strategy_names)} strategy(ies): {', '.join(strategy_names)}")
+    
+    # Run each strategy
+    artifact_count = 0
+    for strategy_name in strategy_names:
+        if strategy_name in {"list_of_years", "years"}:
+            strategy_obj = ListOfYearsStrategy(RUN_ID, output_dir)
+        elif strategy_name in {"bespoke_events", "bespoke"}:
+            strategy_obj = BespokeEventsStrategy(RUN_ID, output_dir)
+        elif strategy_name in {"time_periods", "periods"}:
+            strategy_obj = ListOfTimePeriodsStrategy(RUN_ID, output_dir)
         else:
-            raise ValueError(
-                "Unknown WIKIPEDIA_INGEST_STRATEGY. "
-                "Expected 'list_of_years' or 'by_category'. "
-                f"Got: {strategy!r}"
-            )
-    finally:
-        conn.close()
+            log_error(f"Unknown strategy: {strategy_name}")
+            continue
+        
+        try:
+            log_info(f"=== Running strategy: {strategy_obj.name()} ===")
+            
+            # Run strategy phases
+            fetch_result = strategy_obj.fetch()
+            parse_result = strategy_obj.parse(fetch_result)
+            artifact_result = strategy_obj.generate_artifacts(parse_result)
+            strategy_obj.cleanup_logs()
+            
+            log_info(f"=== Strategy {strategy_obj.name()} complete: {artifact_result.artifact_path} ===")
+            artifact_count += 1
+            
+        except Exception as e:
+            log_error(f"Strategy {strategy_name} failed: {e}")
+            import traceback
+            log_error(traceback.format_exc())
+            continue
+    
+    log_info(f"Ingestion complete: {artifact_count} artifact(s) generated")
+    log_info("Run database_loader.py to load artifacts into the database")
 
 
 def main() -> None:

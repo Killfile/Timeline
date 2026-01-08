@@ -2,7 +2,7 @@
 
 import pytest
 from span_parsing.circa_year_parser import CircaYearParser
-from span_parsing.span_parser import SpanParser
+from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
 from span_parsing.span import SpanPrecision
 
 
@@ -91,7 +91,7 @@ class TestCircaYearParser:
     
     def test_circa_integration_with_span_parser(self):
         """Test that SpanParser correctly uses CircaYearParser."""
-        span = SpanParser.parse_span_from_bullet("c. 490 BC – Battle of Marathon", span_year=490, assume_is_bc=True)
+        span = YearsParseOrchestrator.parse_span_from_bullet("c. 490 BC – Battle of Marathon", span_year=490, assume_is_bc=True)
         assert span is not None
         assert span.start_year == 490
         assert span.is_bc is True

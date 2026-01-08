@@ -23,13 +23,14 @@ class MonthOnlyParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from span_parsing.span_parser import SpanParser
+        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
         
-        # EG: September
-        m = re.search(r"(?<!\d)(\w+)(?!\d)", text)
+        # Match full month names case-insensitively, ensuring they're standalone words
+        month_pattern = r"^\s*\b(january|february|march|april|may|june|july|august|september|october|november|december)\b"
+        m = re.search(month_pattern, text, re.IGNORECASE)
         if m:
-            month_name = m.group(1)
-            month = SpanParser.month_name_to_number(month_name)
+            month_name = m.group(1).lower()  # Normalize to lowercase for consistent processing
+            month = YearsParseOrchestrator.month_name_to_number(month_name)
             if month is not None:
                 # Calculate actual days in month (simplified - doesn't handle leap years)
                 days_in_month = {
@@ -43,11 +44,12 @@ class MonthOnlyParser(SpanParserStrategy):
                     end_year=page_year,
                     end_month=month,
                     end_day=days_in_month.get(month, 31),
-                    is_bc=page_bc,
+                    start_year_is_bc=page_bc,
+                    end_year_is_bc=page_bc,
                     precision=SpanPrecision.MONTH_ONLY,
                     match_type="Month only within page span. EG: Month"
                 )
-                return SpanParser._return_none_if_invalid(span)
+                return YearsParseOrchestrator._return_none_if_invalid(span)
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:

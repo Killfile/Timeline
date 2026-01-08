@@ -60,29 +60,15 @@ class SpanParserStrategy(ABC):
     def _validate_span(self, span: Span) -> bool:
         """Validate that a span has logical date values.
         
+        Deprecated: Use span.is_valid() instead.
+        
         Args:
             span: The span to validate
             
         Returns:
             True if the span is valid, False otherwise
         """
-        # Start must be before or equal to end
-        if span.is_bc == False and span.start_year > span.end_year:
-            return False
-        if span.is_bc == True and span.start_year < span.end_year:
-            return False
-        if span.start_year == span.end_year:
-            if span.start_month > span.end_month:
-                return False
-            if span.start_month == span.end_month:
-                if span.start_day > span.end_day:
-                    return False
-        
-        # Year 0 doesn't exist historically (1 BC → 1 AD)
-        if int(span.start_year) == 0 or int(span.end_year) == 0:
-            return False
-        
-        return True
+        return span.is_valid()
     
     def _return_none_if_invalid(self, span: Span) -> Span | None:
         """Return None if the span is invalid, otherwise return the span.
@@ -95,7 +81,7 @@ class SpanParserStrategy(ABC):
         """
         if span is None:
             return None
-        if self._validate_span(span) is False:
+        if not span.is_valid():
             return None
         return span
 

@@ -23,14 +23,14 @@ class SingleMonthDayRangeParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from span_parsing.span_parser import SpanParser
+        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
         
         # EG: September 25–28
-        m = re.search(r"(?<!\d)(\w+)\s+(\d{1,2})\s*[–—−-]\s*(\d{1,2})", text)
+        m = re.search(r"^\s*(?<!\d)\b(january|february|march|april|may|june|july|august|september|october|november|december)\b\s+(\d{1,2})\s*[–—−-]\s*(\d{1,2})", text, re.IGNORECASE)
         if m:
             month_name = m.group(1)
             day = int(m.group(2))
-            month = SpanParser.month_name_to_number(month_name)
+            month = YearsParseOrchestrator.month_name_to_number(month_name)
             if month is not None:
                 span = Span(
                     start_year=page_year,
@@ -39,9 +39,10 @@ class SingleMonthDayRangeParser(SpanParserStrategy):
                     end_year=page_year,
                     end_month=month,
                     end_day=int(m.group(3)),
-                    is_bc=page_bc,
+                    start_year_is_bc=page_bc,
+                    end_year_is_bc=page_bc,
                     precision=SpanPrecision.EXACT,
                     match_type="Day range within page span (same month). EG: Month DD-DD"
                 )
-                return SpanParser._return_none_if_invalid(span)
+                return YearsParseOrchestrator._return_none_if_invalid(span)
         return None

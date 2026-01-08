@@ -54,7 +54,8 @@ class CircaYearParser(SpanParserStrategy):
             start_day=1,
             end_month=12,
             end_day=31,
-            is_bc=is_bc,
+            start_year_is_bc=is_bc,
+            end_year_is_bc=is_bc,
             precision=SpanPrecision.CIRCA,
             match_type="Circa year (c./ca./circa ####)"
         )

@@ -91,8 +91,8 @@ class TestSingleYearMultiMonthDayRangeParser:
         pass  # Skipping this - the regex will match differently
     
     def test_embedded_in_longer_text(self):
-        """Test parsing when date is embedded in longer text."""
-        result = self.parser.parse("Event from March 15 – April 20 was significant", 2020, False)
+        """Test parsing when date is at the beginning of the line."""
+        result = self.parser.parse("March 15 – April 20 was significant", 2020, False)
         assert result is not None
         assert result.start_month == 3
         assert result.end_month == 4

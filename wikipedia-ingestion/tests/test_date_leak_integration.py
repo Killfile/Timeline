@@ -6,7 +6,7 @@ doesn't leak between events when processing multiple events from a year page.
 
 import pytest
 from ingestion_list_of_years import _extract_events_section_items_with_report
-from span_parsing import SpanParser
+from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
 
 
 def test_ingestion_loop_date_isolation():
@@ -44,7 +44,7 @@ def test_ingestion_loop_date_isolation():
         bullet_text = item["text"]
         
         # Parse the bullet (mimicking the actual loop logic)
-        bullet_span = SpanParser.parse_span_from_bullet(
+        bullet_span = YearsParseOrchestrator.parse_span_from_bullet(
             bullet_text, 
             scope["start_year"], 
             assume_is_bc=page_assume_is_bc
@@ -123,7 +123,7 @@ def test_date_leak_would_occur_without_initialization():
     # With the current parser (including fallback), both events get parsed
     results = []
     for item in extracted_items:
-        bullet_span = SpanParser.parse_span_from_bullet(item["text"], 2, assume_is_bc=True)
+        bullet_span = YearsParseOrchestrator.parse_span_from_bullet(item["text"], 2, assume_is_bc=True)
         
         # Both events should have spans now
         assert bullet_span is not None

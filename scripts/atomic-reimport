@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Atomic reimport script for Wikipedia data.
+# Atomic reimport script for Wikipedia data using ETL architecture.
 # This script reimports Wikipedia data while preserving enrichments.
 #
 # How it works:
-# 1. Creates a temporary table (historical_events_temp)
-# 2. Imports data into the temp table
-# 3. Atomically swaps temp table with production table
-# 4. Enrichments (event_enrichments, event_categories) survive via event_key
+# 1. Runs wikipedia-ingestion to generate JSON artifacts
+# 2. Runs database-loader in UPSERT mode (delete by URL, then insert)
+# 3. Enrichments (event_enrichments, event_categories) survive via event_key
+# 4. Prompts to clean up logs directory
 #
 # Usage:
 #   ./scripts/atomic-reimport [WIKI_MIN_YEAR] [WIKI_MAX_YEAR]
@@ -37,22 +37,49 @@ if [ $# -ge 2 ]; then
 fi
 
 echo "========================================"
-echo "Starting Atomic Reimport"
+echo "Starting Atomic Reimport (ETL Mode)"
 echo "========================================"
 echo ""
 echo "This will:"
-echo "  1. Import data into a temporary table"
-echo "  2. Swap tables atomically"
+echo "  1. Extract: Generate JSON artifacts from Wikipedia"
+echo "  2. Load: Delete events by URL, then insert new data"
 echo "  3. Preserve all enrichment data (categories, interest counts)"
 echo ""
 echo "Press Ctrl+C to cancel, or wait 3 seconds to continue..."
 sleep 3
 
 echo ""
-echo "Running atomic reimport..."
-$COMPOSE run --rm wikipedia-ingestion python atomic_reimport.py
+echo "========================================"
+echo "Step 1: Extract (Generate Artifacts)"
+echo "========================================"
+$COMPOSE run --rm wikipedia-ingestion
+
+echo ""
+echo "========================================"
+echo "Step 2: Load (Upsert to Database)"
+echo "========================================"
+export LOADER_MODE=upsert
+$COMPOSE run --rm -e LOADER_MODE=upsert database-loader
 
 echo ""
 echo "========================================"
 echo "✅ Atomic Reimport Complete!"
 echo "========================================"
+echo ""
+echo "Artifacts are stored in: wikipedia-ingestion/logs/"
+echo ""
+read -p "Do you want to clear the logs directory? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  echo "Clearing logs directory..."
+  rm -rf wikipedia-ingestion/logs/events_*.json
+  rm -rf wikipedia-ingestion/logs/exclusions_*.json
+  rm -rf wikipedia-ingestion/logs/load_report_*.json
+  rm -rf wikipedia-ingestion/logs/ingest_*.log
+  echo "✅ Logs cleared"
+else
+  echo "Logs preserved"
+fi
+
+echo ""
+echo "Done!"

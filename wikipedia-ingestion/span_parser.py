@@ -16,6 +16,30 @@ class Span:
     precision: str
     match_type: str
 
+    def to_dict(self) -> dict:
+        """Return a dictionary representation of the Span for JSON serialization."""
+        return {
+            "start_year": self.start_year,
+            "start_month": self.start_month,
+            "start_day": self.start_day,
+            "end_year": self.end_year,
+            "end_month": self.end_month,
+            "end_day": self.end_day,
+            "is_bc": self.is_bc,
+            "precision": self.precision,
+            "match_type": self.match_type,
+        }
+
+import json
+class SpanEncoder(json.JSONEncoder):
+    """JSON encoder that handles Span objects."""
+    
+    def default(self, obj):
+        if isinstance(obj, Span):
+            return obj.to_dict()
+        # Let the base class handle everything else
+        return super().default(obj)
+
 class SpanParserStrategy(ABC):
     """Interface for span parsing strategies."""
 

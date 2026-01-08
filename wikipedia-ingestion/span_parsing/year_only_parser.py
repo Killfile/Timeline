@@ -23,7 +23,7 @@ class YearOnlyParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from span_parsing.span_parser import SpanParser
+        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
         
         # Parse year but only at the start of the string
         m = re.search(r"^\s*(\d{3,4})\b", text)
@@ -37,11 +37,12 @@ class YearOnlyParser(SpanParserStrategy):
                 start_day=1,
                 end_month=12,
                 end_day=31,
-                is_bc=bc,
+                start_year_is_bc=bc,
+                end_year_is_bc=bc,
                 precision=SpanPrecision.YEAR_ONLY,
                 match_type="3-4 digit year only. EG: ####"
             )
-            return SpanParser._return_none_if_invalid(span)
+            return YearsParseOrchestrator._return_none_if_invalid(span)
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:

@@ -24,9 +24,12 @@ class YearRangeParser(SpanParserStrategy):
         """
         # Lazy import to avoid circular dependency
         
+        # Era markers for DRY principle
+        ERA_MARKERS = ["BC", "BCE", "AD", "CE"]
+        
         text = self.normalize_dashs(text)
         m = re.search(
-            r"(?<![\d#])(\d{1,4})\s*(BC|BCE|AD|CE)?\s*-\s*(\d{1,4})\s*(BC|BCE|AD|CE)?",
+            rf"^\s*(?<![\d#])(\d{{1,4}})\s*({'|'.join(ERA_MARKERS)})?\s*-\s*(\d{{1,4}})\s*({'|'.join(ERA_MARKERS)})?",
             text,
             flags=re.IGNORECASE,
         )
@@ -36,14 +39,21 @@ class YearRangeParser(SpanParserStrategy):
             e_y = int(m.group(3))
             e_era = (m.group(4) or "").upper()
 
-            is_bc = ("BC" in s_era) or ("BC" in e_era) or ("BCE" in s_era) or ("BCE" in e_era)
-            is_ad = ("AD" in s_era) or ("AD" in e_era) or ("BCE" not in s_era and "CE" in s_era) or ("BCE" not in e_era and "CE" in e_era)
-            if is_bc and is_ad:
-                return None
+            # Check for BC markers
+            bc_markers = ["BC", "BCE"]
+            ad_markers = ["AD", "CE"]
 
-            if not is_bc and not is_ad:
-                is_bc = page_bc
+            start_year_is_bc: bool
+            end_year_is_bc: bool
 
+            start_year_is_bc = any(marker in s_era for marker in bc_markers)
+            end_year_is_bc = any(marker in e_era for marker in bc_markers)
+
+            if not start_year_is_bc and not end_year_is_bc and page_bc:
+                start_year_is_bc = end_year_is_bc = True
+
+            if end_year_is_bc and not start_year_is_bc and s_era == "":
+                start_year_is_bc = end_year_is_bc
 
             start_year = s_y
             end_year = e_y
@@ -55,7 +65,8 @@ class YearRangeParser(SpanParserStrategy):
                 end_year=end_year,
                 end_month=12,
                 end_day=31,
-                is_bc=bool(is_bc and not is_ad),
+                start_year_is_bc=start_year_is_bc,
+                end_year_is_bc=end_year_is_bc,
                 precision=SpanPrecision.YEAR_ONLY,
                 match_type="Range. EG: ### BC - ####"
             )

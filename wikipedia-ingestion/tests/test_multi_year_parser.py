@@ -92,9 +92,8 @@ class TestMultiYearMonthAndDayRangeParser:
     def test_embedded_in_longer_text(self):
         """Test parsing when date is embedded in longer text."""
         result = self.parser.parse("Event from March 15, 2020 – April 20, 2021 was significant", 2020, False)
-        assert result is not None
-        assert result.start_year == 2020
-        assert result.end_year == 2021
+        assert result is None
+
     
     @pytest.mark.parametrize("text", [
         "March  15,  2020  –  April  20,  2021",

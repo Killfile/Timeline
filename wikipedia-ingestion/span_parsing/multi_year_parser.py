@@ -24,12 +24,12 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from span_parsing.span_parser import SpanParser
+        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
         
         # EG: September 28, 2020 – October 2, 2021
         # Note: When explicit years are provided, use those to determine BC/AD status
         m = re.search(
-            r"(?<!\d)(\w+)\s+(\d{1,2}),\s*(\d{1,4})\s*[–—−-]\s*(\w+)\s+(\d{1,2}),\s*(\d{1,4})",
+            r"^\s*(?<!\d)(\w+)\s+(\d{1,2}),\s*(\d{1,4})\s*[–—−-]\s*(\w+)\s+(\d{1,2}),\s*(\d{1,4})",
             text
         )
         if m:
@@ -39,8 +39,8 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
             end_month_name = m.group(4)
             end_day = int(m.group(5))
             end_year = int(m.group(6))
-            start_month = SpanParser.month_name_to_number(start_month_name)
-            end_month = SpanParser.month_name_to_number(end_month_name)
+            start_month = YearsParseOrchestrator.month_name_to_number(start_month_name)
+            end_month = YearsParseOrchestrator.month_name_to_number(end_month_name)
             if start_month is not None and end_month is not None:
                 # Explicit year in text typically means AD unless page context is BC
                 span = Span(
@@ -50,11 +50,12 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
                     end_year=end_year,
                     end_month=end_month,
                     end_day=end_day,
-                    is_bc=page_bc,
+                    start_year_is_bc=page_bc,
+                    end_year_is_bc=page_bc,
                     precision=SpanPrecision.EXACT,
                     match_type="Day range across years within page span. EG: Month DD, YYYY - Month DD, YYYY"
                 )
-                return SpanParser._return_none_if_invalid(span)
+                return YearsParseOrchestrator._return_none_if_invalid(span)
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:
