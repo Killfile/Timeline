@@ -26,6 +26,7 @@ class TimePeriodParseOrchestrator(ParseOrchestrator):
             SpanParsers.PARENTHESIZED_YEAR_RANGE,
             SpanParsers.PARENTHESIZED_CIRCA_YEAR_RANGE,
             SpanParsers.PARENTHESIZED_DECADE,
+            SpanParsers.PARENTHESIZED_DECADE_RANGE,
             SpanParsers.PARENTHESIZED_YEAR,
             SpanParsers.PARENTHESIZED_MIRRORED_ERA_YEAR_RANGE,
             SpanParsers.PARENTHESIZED_YEAR_RANGE_WITH_LOCATION,

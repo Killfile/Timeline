@@ -13,13 +13,14 @@ class SpanParsers(Enum):
     MONTH_ONLY_WITHIN_PAGE_SPAN = auto()
     PARENTHESIZED_SHORT_YEAR_RANGE = auto()
     PARENTHESIZED_YEAR_RANGE = auto()
-    PARENTHESIZED_MIRRORED_ERA_YEAR_RANGE = auto()
-    PARENTHESIZED_YEAR = auto()
-    PARENTHESIZED_CIRCA_YEAR_RANGE = auto()
-    PARENTHESIZED_DECADE = auto()
     PARENTHESIZED_YEAR_RANGE_WITH_LOCATION = auto()
     PARENTHESIZED_CIRCA_YEAR_RANGE_WITH_LOCATION = auto()
+    PARENTHESIZED_MIRRORED_ERA_YEAR_RANGE = auto()
+    PARENTHESIZED_DECADE_RANGE = auto()
+    PARENTHESIZED_YEAR = auto()
+    PARENTHESIZED_CIRCA_YEAR_RANGE = auto()
     PARENTHESIZED_CENTURY_WITH_LOCATION = auto()
+    PARENTHESIZED_DECADE = auto()
     YEAR_RANGE = auto()
     YEAR_WITH_EXPLICIT_ERA = auto()
     YEAR_ONLY = auto()
@@ -63,6 +64,7 @@ class SpanParserFactory:
         from span_parsing.parenthesized_year_parser import ParenthesizedYearParser
         from span_parsing.parenthesized_short_year_range_parser import ParenthesizedShortYearRangeParser
         from span_parsing.parenthesized_mirrored_era_year_range_parser import ParenthesizedMirroredEraYearRangeParser
+        from span_parsing.parenthesized_decade_range_parser import ParenthesizedDecadeRangeParser
 
         if strategy == SpanParsers.MONTH_AND_DAY_RANGE_WITHIN_PAGE_SPAN_ACROSS_YEARS:
             return MultiYearMonthAndDayRangeParser()
@@ -78,6 +80,8 @@ class SpanParserFactory:
             return ParenthesizedYearRangeParser()
         elif strategy == SpanParsers.PARENTHESIZED_MIRRORED_ERA_YEAR_RANGE:
             return ParenthesizedMirroredEraYearRangeParser()
+        elif strategy == SpanParsers.PARENTHESIZED_DECADE_RANGE:
+            return ParenthesizedDecadeRangeParser()
         elif strategy == SpanParsers.PARENTHESIZED_SHORT_YEAR_RANGE:
             return ParenthesizedShortYearRangeParser()
         elif strategy == SpanParsers.PARENTHESIZED_YEAR:

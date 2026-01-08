@@ -17,7 +17,7 @@ class ParenthesizedCircaYearRangeParser(SpanParserStrategy):
     mixed-era ranges.
     """
 
-    _CIRCA_RE = r"(?:c\s*\.|ca\s*\.|circa)\s*"
+    _CIRCA_RE = r"(?:c\s*\.|ca\s*\.|circa|≈)\s*"
 
     _RE = re.compile(
         rf"\(\s*(?P<s_circa>{_CIRCA_RE})?(?P<s_y>\d{{1,4}})\s*(?P<s_era>BC|BCE|AD|CE)?\s*[–—−-]\s*(?P<e_circa>{_CIRCA_RE})?(?P<e_y>\d{{1,4}})\s*(?P<e_era>BC|BCE|AD|CE)?\s*\)\s*$",
@@ -40,26 +40,17 @@ class ParenthesizedCircaYearRangeParser(SpanParserStrategy):
         bc_markers = ["BC", "BCE"]
         ad_markers = ["AD", "CE"]
 
-        is_bc = any(marker in s_era for marker in bc_markers) or any(marker in e_era for marker in bc_markers)
-        is_ad = any(marker in s_era for marker in ad_markers) or any(marker in e_era for marker in ad_markers) or (
-            ("BCE" not in s_era and "CE" in s_era) or ("BCE" not in e_era and "CE" in e_era)
-        )
-        if is_bc and is_ad:
-            return None
+        start_year_is_bc: bool
+        end_year_is_bc: bool
 
-        if not is_bc and not is_ad:
-            start_year_is_bc = page_bc
-            end_year_is_bc = page_bc
-        else:
-            if s_era and not e_era:
-                start_year_is_bc = s_era in bc_markers
-                end_year_is_bc = start_year_is_bc
-            elif e_era and not s_era:
-                end_year_is_bc = e_era in bc_markers
-                start_year_is_bc = end_year_is_bc
-            else:
-                start_year_is_bc = s_era in bc_markers
-                end_year_is_bc = e_era in bc_markers
+        start_year_is_bc = s_era in bc_markers
+        end_year_is_bc = e_era in bc_markers
+
+        if not start_year_is_bc and not end_year_is_bc and page_bc:
+            start_year_is_bc = end_year_is_bc = True
+
+        if end_year_is_bc and not start_year_is_bc and s_era == "":
+            start_year_is_bc = end_year_is_bc
 
         # Determine if either side is circa
         s_circa = bool(s_circa_raw.strip())
