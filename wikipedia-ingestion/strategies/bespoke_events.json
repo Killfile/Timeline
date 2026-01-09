@@ -1,0 +1,53 @@
+{
+  "description": "This file contains manually curated events to add to the timeline. Add your own events here following the schema below. Delete or modify the example events as needed.",
+  "schema": {
+    "title": "string (required)",
+    "description": "string or null",
+    "start_year": "integer (required)",
+    "start_month": "integer 1-12 or null",
+    "start_day": "integer 1-31 or null",
+    "end_year": "integer (required)",
+    "end_month": "integer 1-12 or null",
+    "end_day": "integer 1-31 or null",
+    "is_bc_start": "boolean (required)",
+    "is_bc_end": "boolean (required)",
+    "precision": "string: 'year', 'month', 'day', 'decade', or 'century' (required)",
+    "weight": "integer (days) or null - used for display priority",
+    "category": "string or null",
+    "url": "string or null"
+  },
+  "events": [
+    {
+      "title": "Example: First human on Mars",
+      "description": "Hypothetical future event for demonstration purposes",
+      "start_year": 2035,
+      "start_month": 7,
+      "start_day": 20,
+      "end_year": 2035,
+      "end_month": 7,
+      "end_day": 20,
+      "is_bc_start": false,
+      "is_bc_end": false,
+      "precision": "day",
+      "weight": 1,
+      "category": "Space Exploration",
+      "url": null
+    },
+    {
+      "title": "Example: Signing of the Magna Carta",
+      "description": "Charter of rights agreed to by King John of England",
+      "start_year": 1215,
+      "start_month": 6,
+      "start_day": 15,
+      "end_year": 1215,
+      "end_month": 6,
+      "end_day": 15,
+      "is_bc_start": false,
+      "is_bc_end": false,
+      "precision": "day",
+      "weight": 1,
+      "category": "Legal History",
+      "url": "https://en.wikipedia.org/wiki/Magna_Carta"
+    }
+  ]
+}

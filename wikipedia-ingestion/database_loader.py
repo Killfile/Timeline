@@ -151,7 +151,8 @@ def collect_all_events(artifacts: list[dict]) -> tuple[list[dict], dict]:
             if not is_valid:
                 log_error(
                     f"Invalid event from {strategy} at index {i}: {error_msg}. "
-                    f"Event: {event.get('title', '(no title)')}"
+                    f"Event: {event.get('title', '(no title)')}. "
+                    f"Precision is {event.get('precision', '(no precision)')}"
                 )
                 stats["invalid_events"] += 1
                 strategy_invalid += 1
@@ -250,7 +251,7 @@ def delete_events_by_urls(conn, urls: set[str]) -> int:
     try:
         # Use ANY to delete all matching URLs in one query
         cursor.execute(
-            f"DELETE FROM {target_table} WHERE url = ANY(%s) RETURNING id;",
+            f"DELETE FROM {target_table} WHERE wikipedia_url = ANY(%s) RETURNING id;",
             (list(urls),)
         )
         deleted_count = cursor.rowcount

@@ -52,6 +52,7 @@ echo ""
 echo "========================================"
 echo "Step 1: Extract (Generate Artifacts)"
 echo "========================================"
+export WIKIPEDIA_INGEST_STRATEGY="all"
 $COMPOSE run --rm wikipedia-ingestion
 
 echo ""

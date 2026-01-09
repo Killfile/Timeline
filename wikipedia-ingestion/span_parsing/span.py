@@ -10,7 +10,7 @@ class SpanPrecision:
     YEAR_ONLY = 1 / 365  # Year only precision
     MONTH_ONLY = 1 / 10   # Month only precision
     SEASON_ONLY = 1 / 4.1   # Season only precision (e.g., Spring, Summer, etc.)
-    CIRCA = 0
+    CIRCA = 0.0
 
 
 @dataclass
@@ -25,7 +25,7 @@ class Span:
     start_year_is_bc: bool
     end_year_is_bc: bool
     match_type: str
-    precision: float = SpanPrecision.EXACT  # Precision of the span (1.0 = exact, 0.5 = approximate, etc.)
+    precision: float = SpanPrecision.EXACT  # Precision of the span
     weight: int | None = None  # Weight in days, computed from span length
     
     # Legacy property for backwards compatibility
@@ -65,6 +65,13 @@ class Span:
             if self.start_month == self.end_month:
                 if self.start_day > self.end_day:
                     return False
+                
+        # Sanity check for month/day ranges (not exhaustive)
+        if not (1 <= self.start_month <= 12 and 1 <= self.end_month <= 12):
+            return False
+        if not (1 <= self.start_day <= 31 and 1 <= self.end_day <= 31):
+            return False
+        
         
         return True
 
