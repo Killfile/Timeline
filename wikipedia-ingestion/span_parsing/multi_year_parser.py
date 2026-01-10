@@ -24,7 +24,7 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+        from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
         
         # EG: September 28, 2020 – October 2, 2021
         # Note: When explicit years are provided, use those to determine BC/AD status
@@ -39,8 +39,8 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
             end_month_name = m.group(4)
             end_day = int(m.group(5))
             end_year = int(m.group(6))
-            start_month = YearsParseOrchestrator.month_name_to_number(start_month_name)
-            end_month = YearsParseOrchestrator.month_name_to_number(end_month_name)
+            start_month = SpanParserStrategy.month_name_to_number(start_month_name)
+            end_month = SpanParserStrategy.month_name_to_number(end_month_name)
             if start_month is not None and end_month is not None:
                 # Explicit year in text typically means AD unless page context is BC
                 span = Span(
@@ -59,18 +59,8 @@ class MultiYearMonthAndDayRangeParser(SpanParserStrategy):
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:
-        try:
-            start = date(
-                year= -span.start_year + 1 if span.is_bc else span.start_year,
-                month=span.start_month,
-                day=span.start_day
-            )
-            end = date(
-                year= -span.end_year + 1 if span.is_bc else span.end_year,
-                month=span.end_month,
-                day=span.end_day
-            )
-            delta_days = (end - start).days + 1
-            return int(delta_days * span.precision)
-        except Exception:
-            return None
+        """Compute weight for multi-year spans.
+        
+        Uses the base class implementation which handles BC years correctly.
+        """
+        return super().compute_weight_days(span)

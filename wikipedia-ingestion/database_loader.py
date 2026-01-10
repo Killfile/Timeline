@@ -20,7 +20,7 @@ The loader:
 3. Deduplicates events across all artifacts
 4. In 'replace' mode: Clears existing data, then inserts
 5. In 'upsert' mode: Collects URLs, deletes matching events, then inserts
-6. Generates a load summary report
+6. Generates a load summary report and error log
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 try:
     from .ingestion_common import (
@@ -75,11 +76,12 @@ def discover_artifact_files(artifact_dir: Path, pattern: str = "events_*.json") 
     return artifacts
 
 
-def load_artifact(artifact_path: Path) -> dict | None:
+def load_artifact(artifact_path: Path, errors: list[dict]) -> dict | None:
     """Load and validate a single artifact file.
     
     Args:
         artifact_path: Path to artifact JSON file
+        errors: List to collect error details
         
     Returns:
         Artifact data dict, or None if loading/validation fails
@@ -90,16 +92,37 @@ def load_artifact(artifact_path: Path) -> dict | None:
         
         # Validate artifact structure
         if not isinstance(data, dict):
+            error_detail = {
+                "type": "artifact_validation",
+                "file": artifact_path.name,
+                "error": f"expected dict, got {type(data)}",
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            errors.append(error_detail)
             log_error(f"Invalid artifact {artifact_path.name}: expected dict, got {type(data)}")
             return None
         
         required_fields = {"strategy", "run_id", "event_count", "events"}
         missing = required_fields - set(data.keys())
         if missing:
+            error_detail = {
+                "type": "artifact_validation",
+                "file": artifact_path.name,
+                "error": f"missing fields {missing}",
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            errors.append(error_detail)
             log_error(f"Invalid artifact {artifact_path.name}: missing fields {missing}")
             return None
         
         if not isinstance(data["events"], list):
+            error_detail = {
+                "type": "artifact_validation",
+                "file": artifact_path.name,
+                "error": "events must be a list",
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            errors.append(error_detail)
             log_error(f"Invalid artifact {artifact_path.name}: events must be a list")
             return None
         
@@ -111,18 +134,33 @@ def load_artifact(artifact_path: Path) -> dict | None:
         return data
         
     except json.JSONDecodeError as e:
+        error_detail = {
+            "type": "json_parse",
+            "file": artifact_path.name,
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        errors.append(error_detail)
         log_error(f"Failed to parse {artifact_path.name}: {e}")
         return None
     except Exception as e:
+        error_detail = {
+            "type": "artifact_load",
+            "file": artifact_path.name,
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat() + "Z"
+        }
+        errors.append(error_detail)
         log_error(f"Failed to load {artifact_path.name}: {e}")
         return None
 
 
-def collect_all_events(artifacts: list[dict]) -> tuple[list[dict], dict]:
+def collect_all_events(artifacts: list[dict], errors: list[dict]) -> tuple[list[dict], dict]:
     """Collect and validate events from all artifacts.
     
     Args:
         artifacts: List of artifact data dicts
+        errors: List to collect error details
         
     Returns:
         Tuple of (valid_events, stats_dict)
@@ -149,6 +187,16 @@ def collect_all_events(artifacts: list[dict]) -> tuple[list[dict], dict]:
             is_valid, error_msg = validate_event_dict(event)
             
             if not is_valid:
+                error_detail = {
+                    "type": "event_validation",
+                    "strategy": strategy,
+                    "event_index": i,
+                    "title": event.get("title", "(no title)"),
+                    "precision": event.get("precision", "(no precision)"),
+                    "error": error_msg,
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                }
+                errors.append(error_detail)
                 log_error(
                     f"Invalid event from {strategy} at index {i}: {error_msg}. "
                     f"Event: {event.get('title', '(no title)')}. "
@@ -268,12 +316,13 @@ def delete_events_by_urls(conn, urls: set[str]) -> int:
         cursor.close()
 
 
-def insert_events_to_db(conn, events: list[dict]) -> tuple[int, int]:
+def insert_events_to_db(conn, events: list[dict], errors: list[dict]) -> tuple[int, int]:
     """Insert events to database.
     
     Args:
         conn: Database connection
         events: List of deduplicated events to insert
+        errors: List to collect error details
         
     Returns:
         Tuple of (inserted_count, failed_count)
@@ -291,9 +340,25 @@ def insert_events_to_db(conn, events: list[dict]) -> tuple[int, int]:
             if insert_event(conn, event, category=category_value):
                 inserted_count += 1
             else:
+                error_detail = {
+                    "type": "insert_failed",
+                    "event_index": i,
+                    "title": event.get("title", "(no title)"),
+                    "error": "insert_event returned False",
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                }
+                errors.append(error_detail)
                 failed_count += 1
                 
         except Exception as e:
+            error_detail = {
+                "type": "insert_exception",
+                "event_index": i,
+                "title": event.get("title", "(no title)"),
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat() + "Z"
+            }
+            errors.append(error_detail)
             log_error(f"Failed to insert event at index {i} ('{event.get('title', '(no title)')}'): {e}")
             failed_count += 1
             continue
@@ -304,6 +369,34 @@ def insert_events_to_db(conn, events: list[dict]) -> tuple[int, int]:
     )
     
     return inserted_count, failed_count
+
+
+def write_error_log(artifact_dir: Path, errors: list[dict]) -> None:
+    """Write collected errors to a JSON error log file.
+    
+    Args:
+        artifact_dir: Directory where artifacts are located
+        errors: List of error details
+    """
+    if not errors:
+        log_info("No errors to log")
+        return
+    
+    error_log = {
+        "error_log_timestamp_utc": datetime.utcnow().isoformat() + "Z",
+        "total_errors": len(errors),
+        "errors": errors
+    }
+    
+    error_log_path = artifact_dir / f"load_errors_{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}.json"
+    
+    try:
+        with open(error_log_path, "w", encoding="utf-8") as f:
+            json.dump(error_log, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        log_info(f"Wrote error log with {len(errors)} errors: {error_log_path}")
+    except Exception as e:
+        log_error(f"Failed to write error log: {e}")
 
 
 def generate_load_report(
@@ -373,12 +466,12 @@ def generate_load_report(
         log_info(f"  {strategy}: {counts['valid']} valid, {counts['invalid']} invalid")
 
 
-def load_artifacts_to_database() -> None:
+def load_artifacts_to_database(errors: list[dict[str, Any]]) -> None:
     """Main function to load all artifacts to database."""
     
     # Configuration
     artifact_dir = Path(os.getenv("ARTIFACT_DIR", "logs"))
-    artifact_pattern = os.getenv("ARTIFACT_PATTERN", "events_*.json")
+    artifact_pattern = os.getenv("ARTIFACT_PATTERN", "*.json")
     mode = os.getenv("LOADER_MODE", "replace").lower()
     
     if mode not in {"replace", "upsert"}:
@@ -390,6 +483,8 @@ def load_artifacts_to_database() -> None:
     log_info(f"Artifact pattern:   {artifact_pattern}")
     log_info(f"Load mode:          {mode}")
     
+    # Initialize error collection is now done in main()
+    
     # Discover artifact files
     artifact_paths = discover_artifact_files(artifact_dir, artifact_pattern)
     
@@ -400,19 +495,21 @@ def load_artifacts_to_database() -> None:
     # Load all artifacts
     artifacts = []
     for artifact_path in artifact_paths:
-        artifact_data = load_artifact(artifact_path)
+        artifact_data = load_artifact(artifact_path, errors)
         if artifact_data:
             artifacts.append(artifact_data)
     
     if not artifacts:
         log_error("No valid artifacts loaded. Aborting.")
+        write_error_log(artifact_dir, errors)
         return
     
     # Collect and validate events
-    all_events, stats = collect_all_events(artifacts)
+    all_events, stats = collect_all_events(artifacts, errors)
     
     if not all_events:
         log_error("No valid events collected. Aborting.")
+        write_error_log(artifact_dir, errors)
         return
     
     # Deduplicate events
@@ -439,7 +536,7 @@ def load_artifacts_to_database() -> None:
             deleted_count = delete_events_by_urls(conn, urls_to_delete)
         
         # Insert events (same for both modes)
-        inserted_count, failed_count = insert_events_to_db(conn, deduplicated_events)
+        inserted_count, failed_count = insert_events_to_db(conn, deduplicated_events, errors)
         
         # Generate report
         generate_load_report(
@@ -453,6 +550,9 @@ def load_artifacts_to_database() -> None:
             mode
         )
         
+        # Write error log
+        write_error_log(artifact_dir, errors)
+        
     finally:
         conn.close()
     
@@ -461,12 +561,17 @@ def load_artifacts_to_database() -> None:
 
 def main() -> None:
     """Entry point for database loader."""
+    errors: list[dict[str, Any]] = []
+    artifact_dir = Path(os.getenv("ARTIFACT_DIR", "logs"))
+    
     try:
-        load_artifacts_to_database()
+        load_artifacts_to_database(errors)
     except Exception as e:
         log_error(f"Database loader failed: {e}")
         import traceback
         log_error(traceback.format_exc())
+        # Write error log even on failure
+        write_error_log(artifact_dir, errors)
         raise
 
 

@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import time
+import hashlib
 from event_key import compute_event_key
 from datetime import datetime
 from pathlib import Path
@@ -60,6 +61,96 @@ DB_CONFIG = {
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 WIKIPEDIA_BASE = "https://en.wikipedia.org"
 LIST_OF_YEARS_URL = "https://en.wikipedia.org/wiki/List_of_years"
+
+
+class HttpCache:
+    """Cache for HTTP responses to avoid redundant fetches."""
+
+    def __init__(self, cache_dir: Path):
+        self.cache_dir = cache_dir
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_cache_key(self, url: str) -> str:
+        """Generate a cache key from the URL."""
+        return hashlib.sha256(url.encode('utf-8')).hexdigest()
+
+    def _load_from_cache(self, cache_key: str) -> tuple[str, str] | None:
+        """Load cached response if it exists."""
+        cache_file = self.cache_dir / f"{cache_key}.json"
+        if cache_file.exists():
+            try:
+                with cache_file.open('r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    return data['text'], data['final_url']
+            except (json.JSONDecodeError, KeyError):
+                # Invalid cache file, ignore and fetch fresh
+                pass
+        return None
+
+    def _save_to_cache(self, cache_key: str, text: str, final_url: str) -> None:
+        """Save response to cache."""
+        cache_file = self.cache_dir / f"{cache_key}.json"
+        data = {'text': text, 'final_url': final_url}
+        try:
+            with cache_file.open('w', encoding='utf-8') as f:
+                json.dump(data, f)
+        except Exception:
+            # If caching fails, don't fail the request
+            pass
+
+    def get(self, url: str, *, timeout: int = 30, context: str = "") -> tuple[tuple[str, str], str | None]:
+        """Fetch from cache or remote.
+
+        Returns:
+          ((html, final_url), None) on success (cached or fresh)
+          (("", url), error_string) on failure
+        """
+        cache_key = self._get_cache_key(url)
+        cached = self._load_from_cache(cache_key)
+        if cached:
+            print(f"🤑 Cache hit for URL{f' ({context})' if context else ''}: {url}", flush=True)
+            text, final_url = cached
+            return ((text, final_url), None)
+
+        # Cache miss: fetch from remote
+        try:
+            resp = WIKI_SESSION.get(url, timeout=timeout)
+            final_url = _canonicalize_wikipedia_url(resp.url or url)
+
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+            text = resp.text or ""
+            snippet = text.replace("\n", " ").strip()[:300]
+
+            if resp.status_code != 200:
+                msg = (
+                    f"HTTP {resp.status_code} fetching HTML"
+                    f"{f' ({context})' if context else ''}"
+                    f" ct={content_type!r} url={final_url} snippet={snippet!r}"
+                )
+                print(msg, flush=True)
+                return (("", final_url), msg)
+
+            if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
+                msg = (
+                    f"Unexpected content-type fetching HTML"
+                    f"{f' ({context})' if context else ''}"
+                    f" ct={content_type!r} url={final_url} snippet={snippet!r}"
+                )
+                print(msg, flush=True)
+                return (("", final_url), msg)
+
+            # Success: cache the response
+            self._save_to_cache(cache_key, text, final_url)
+            return ((text, final_url), None)
+        except requests.RequestException as e:
+            msg = f"Request error{f' ({context})' if context else ''}: {e}"
+            print(msg, flush=True)
+            return (("", url), msg)
+
+
+# Cache directory for HTTP responses
+CACHE_DIR = Path(__file__).resolve().parent / "cache"
+HTTP_CACHE = HttpCache(CACHE_DIR)
 
 
 def _setup_run_logging() -> tuple[logging.Logger, logging.Logger, str, str]:
@@ -121,6 +212,7 @@ def _build_wikipedia_session() -> requests.Session:
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=frozenset(["GET"]),
         raise_on_status=False,
+        respect_retry_after_header=False,  # Avoid parsing issues with decimal Retry-After values
     )
     adapter = HTTPAdapter(max_retries=retries)
     session.mount("https://", adapter)
@@ -255,45 +347,25 @@ def _resolve_page_identity(url: str, *, timeout: int = 30) -> dict | None:
     canonical_url = _canonicalize_wikipedia_url(fullurl or url)
     return {"pageid": pageid, "canonical_url": canonical_url}
 
+def _get_from_remote(url: str, *, timeout: int = 30, context: str = "") -> tuple[tuple[str, str], str | None]:
+    """Fetch HTML with caching.
 
-def _get_html(url: str, *, timeout: int = 30, context: str = "") -> tuple[tuple[str, str], str | None]:
+    Checks cache first; if miss, fetches from remote and caches success.
+    Returns:
+      ((html, final_url), None) on success (cached or fresh)
+      (("", url), error_string) on failure
+    """
+    return HTTP_CACHE.get(url, timeout=timeout, context=context)
+
+def get_html(url: str, *, timeout: int = 30, context: str = "") -> tuple[tuple[str, str], str | None]:
     """Fetch HTML.
 
     Returns:
       ((html, final_url), None) on success
       (("", url), error_string) on failure
     """
-    try:
-        resp = WIKI_SESSION.get(url, timeout=timeout)
-        final_url = _canonicalize_wikipedia_url(resp.url or url)
-
-        content_type = (resp.headers.get("Content-Type") or "").lower()
-        text = resp.text or ""
-        snippet = text.replace("\n", " ").strip()[:300]
-
-        if resp.status_code != 200:
-            msg = (
-                f"HTTP {resp.status_code} fetching HTML"
-                f"{f' ({context})' if context else ''}"
-                f" ct={content_type!r} url={final_url} snippet={snippet!r}"
-            )
-            print(msg, flush=True)
-            return (("", final_url), msg)
-
-        if "text/html" not in content_type and "application/xhtml+xml" not in content_type:
-            msg = (
-                f"Unexpected content-type fetching HTML"
-                f"{f' ({context})' if context else ''}"
-                f" ct={content_type!r} url={final_url} snippet={snippet!r}"
-            )
-            print(msg, flush=True)
-            return (("", final_url), msg)
-
-        return ((text, final_url), None)
-    except requests.RequestException as e:
-        msg = f"Request error{f' ({context})' if context else ''}: {e}"
-        print(msg, flush=True)
-        return (("", url), msg)
+    return_value = _get_from_remote(url, timeout=timeout, context=context)
+    return return_value
 
 
 def insert_event(conn, event: dict, category: str | None):

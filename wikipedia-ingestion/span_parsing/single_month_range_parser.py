@@ -23,14 +23,14 @@ class SingleMonthDayRangeParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+        from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
         
         # EG: September 25–28
         m = re.search(r"^\s*(?<!\d)\b(january|february|march|april|may|june|july|august|september|october|november|december)\b\s+(\d{1,2})\s*[–—−-]\s*(\d{1,2})", text, re.IGNORECASE)
         if m:
             month_name = m.group(1)
             day = int(m.group(2))
-            month = YearsParseOrchestrator.month_name_to_number(month_name)
+            month = SpanParserStrategy.month_name_to_number(month_name)
             if month is not None:
                 span = Span(
                     start_year=page_year,

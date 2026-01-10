@@ -29,23 +29,21 @@ from typing import Any
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 try:
-    from ..event_schema import CanonicalEvent
-    from ..ingestion_common import (
+    from .ingestion_common import (
         LOGS_DIR,
         _get_html,
         log_error,
         log_info,
     )
-    from ..span_parsing.span import Span, SpanEncoder, SpanPrecision
-    from ..span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
-    from ..strategy_base import (
+    from .span_parsing.span import Span, SpanEncoder, SpanPrecision
+    from .list_of_time_periods_span_parser import ListOfTimePeriodsSpanParser
+    from .strategy_base import (
         ArtifactResult,
         FetchResult,
         IngestionStrategy,
         ParseResult,
     )
 except ImportError:
-    from event_schema import CanonicalEvent
     from ingestion_common import (
         LOGS_DIR,
         get_html,
@@ -53,7 +51,7 @@ except ImportError:
         log_info,
     )
     from span_parsing.span import Span, SpanEncoder, SpanPrecision
-    from span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
+    from list_of_time_periods_span_parser import ListOfTimePeriodsSpanParser
     from strategy_base import (
         ArtifactResult,
         FetchResult,
@@ -168,13 +166,12 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         Returns:
             ArtifactResult with paths to generated files.
         """
-        artifact_filename = f"events_{self.name()}_{self.run_id}.json"
+        artifact_filename = f"{self.run_id}_{self.name()}.json"
         artifact_path = self.output_dir / artifact_filename
         
         artifact_data = {
             "strategy": self.name(),
             "run_id": self.run_id,
-            "event_count": len(parse_result.events),
             "generated_at": datetime.utcnow().isoformat(),
             "metadata": parse_result.parse_metadata,
             "events": parse_result.events,
@@ -230,32 +227,35 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             List of event dictionaries
         """
         events = []
-
+        
+        # Find the list that follows this heading
+        # Wikipedia wraps headings in <div class="mw-heading">, so we need to look at the parent's sibling
+        heading_container = section_heading.parent
+        if heading_container and heading_container.name == 'div' and 'mw-heading' in heading_container.get('class', []):
+            current = heading_container.find_next_sibling()
+        else:
+            current = section_heading.find_next_sibling()
+        
         # Track header context as we drill down
         header_stack = []
-
-        # Iterate document-order from the section heading forward, processing
-        # any <ul> elements encountered until we hit the next heading of the
-        # same or higher level. This is more robust than walking only
-        # immediate siblings because Wikipedia often nests lists inside
-        # intermediate containers (links/divs), which previously caused us to
-        # miss valid lists (e.g., under 'African periods').
-        el = section_heading
-        while True:
-            el = el.find_next()
-            if not el:
-                break
-
-            # If we hit another section heading of the same-or-higher level,
-            # stop processing this section.
-            if isinstance(el, Tag) and el.name in ['h2', 'h3', 'h4']:
-                if self._heading_level(el) <= self._heading_level(section_heading):
+        
+        while current:
+            # Stop if we hit another section heading of same or higher level
+            if current.name in ['h2', 'h3', 'h4']:
+                if self._heading_level(current) <= self._heading_level(section_heading):
                     break
-
-            # Process any <ul> we find in document order
-            if isinstance(el, Tag) and el.name == 'ul':
-                self._process_list(el, events, header_stack, section_name)
-
+            elif current.name == 'div' and 'mw-heading' in current.get('class', []):
+                # Check if the div contains a heading
+                inner_heading = current.find(['h2', 'h3', 'h4'])
+                if inner_heading and self._heading_level(inner_heading) <= self._heading_level(section_heading):
+                    break
+            
+            # Process lists
+            if current.name == 'ul':
+                self._process_list(current, events, header_stack, section_name)
+            
+            current = current.find_next_sibling()
+        
         return events
 
     def _heading_level(self, tag: Tag) -> int:
@@ -338,25 +338,24 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             section_name: Name of the section being parsed
 
         Returns:
-            Event dictionary in canonical schema format, or None if parsing fails
+            Event dictionary, or None if parsing fails
         """
         # Extract date range from parentheses at end
         date_match = re.search(r'\(([^)]*\d{3,4}[^)]*)\)\s*$', li_text)
-        if date_match:
-            name = li_text[:date_match.start()].strip()
-        else:
-            name = li_text
+        if not date_match:
+            return None
+        
+        date_str = date_match.group(1)
         
         # Get the name/title (everything before the date parentheses)
-        
+        name = li_text[:date_match.start()].strip()
         name = self._clean_text(name)
         
         # Remove link brackets if present
         name = re.sub(r'\[.*?\]', '', name).strip()
         
         # Parse the date range using the span parsing framework
-        print(f"Parsing date range from li_text: {li_text}")
-        span = self._parse_date_range(li_text)
+        span = self._parse_date_range(date_str)
         if not span:
             # Error already logged in _parse_date_range
             return None
@@ -367,43 +366,36 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         else:
             title = name
         
-        # Truncate title if too long (max 500 chars for DB)
-        if len(title) > 500:
-            title = title[:497] + "..."
-        
         # Build description
         description = self._build_description(name, header_stack)
-        
-        # Truncate description if too long
-        if len(description) > 500:
-            description = description[:497] + "..."
         
         # Extract Wikipedia link if present
         wiki_link = self._extract_wiki_link(li)
         
-        # Create canonical event using CanonicalEvent.from_span_dict helper
-        # which flattens the span fields to top level
-        span_dict = span.to_dict()
+        event = {
+            "event_key": f"time_period_{self.run_id}_{event_index}",
+            "title": title,
+            "description": description,
+            "span": span.to_dict(),
+            "url": wiki_link or TIME_PERIODS_URL,
+            "category": header_stack[0] if header_stack else section_name,
+            "month_bucket": None,
+        }
         
-        canonical_event = CanonicalEvent.from_span_dict(
-            title=title,
-            description=description,
-            url=wiki_link or TIME_PERIODS_URL,
-            span_dict=span_dict,
-            category=header_stack[0] if header_stack else section_name,
-            pageid=None,  # No pageid for list_of_time_periods entries
-            debug_info={
-                "event_key": f"time_period_{self.run_id}_{event_index}",
-                "original_li_text": li_text,
-                "header_stack": header_stack,
-                "section_name": section_name,
-            }
-        )
-        
-        return canonical_event.to_dict()
+        return event
 
     def _parse_date_range(self, date_str: str) -> Span | None:
-        """Parse a date range string into a Span object using the span_parsing framework
+        """Parse a date range string into a Span object using the span_parsing framework.
+
+        Handles formats like:
+        - 1760–1970
+        - 1945–present
+        - ≈1250 – ≈1350
+        - 1940s
+        - 1901-present
+        - 27 BC – 284 AD
+        - Europe, 300 AD – 700 AD
+        - c. 1300 – 1453
 
         Args:
             date_str: The date string to parse
@@ -416,10 +408,27 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         
         # Substitute "present" with current year
         date_str = re.sub(r'\bpresent\b', str(CURRENT_YEAR), date_str, flags=re.IGNORECASE)
-        if date_str is None:
-            print(f"🚨 date_str is None after substitution for present: {original_date_str}")
-        orchestrator = ParseOrchestratorFactory.get_orchestrator(ParseOrchestratorTypes.TIME_PERIODS)
-        span = orchestrator.parse_span_from_bullet(text=date_str, span_year=2000, assume_is_bc=False)
+        
+        # Remove location prefixes (e.g., "Europe, " or "British Isles, ")
+        # Match pattern: word(s) followed by comma and space, before year digits
+        date_str = re.sub(r'^[A-Za-z][A-Za-z\s()]+,\s*', '', date_str)
+        
+        # Handle decade format (1940s) - convert to range
+        decade_match = re.match(r'(\d{3})0s', date_str.strip())
+        if decade_match:
+            decade_start = decade_match.group(1) + '0'
+            decade_end = decade_match.group(1) + '9'
+            date_str = f"{decade_start}-{decade_end}"
+        
+        # Handle "between X and Y" format
+        between_match = re.search(r'between\s+(.+?)\s+and\s+(.+)', date_str, flags=re.IGNORECASE)
+        if between_match:
+            date_str = f"{between_match.group(1)}-{between_match.group(2)}"
+        
+        # Try to parse using the existing span parser infrastructure
+        # Use a dummy span_year since we're not in a year-specific context
+        # assume_is_bc=False since most periods are AD unless explicitly stated
+        span = ListOfTimePeriodsSpanParser.parse_span_from_bullet(date_str, span_year=2000, assume_is_bc=False)
         
         if span:
             return span

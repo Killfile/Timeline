@@ -1,4 +1,4 @@
-from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 
 
 def test_circa_bullet_now_parses_correctly():

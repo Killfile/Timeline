@@ -25,7 +25,7 @@ class SingleYearMultiMonthDayRangeParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+        from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
         MONTH_NAMES = "(january|february|march|april|may|june|july|august|september|october|november|december)"
         # EG: September 28 – October 2
         m = re.search(rf"^\s*(?<!\d)\b{MONTH_NAMES}\b\s+(\d{{1,2}})\s*[–—−-]\s*\b{MONTH_NAMES}\b\s+(\d{{1,2}})", text, re.IGNORECASE)
@@ -34,8 +34,8 @@ class SingleYearMultiMonthDayRangeParser(SpanParserStrategy):
             start_day = int(m.group(2))
             end_month_name = m.group(3)
             end_day = int(m.group(4))
-            start_month = YearsParseOrchestrator.month_name_to_number(start_month_name)
-            end_month = YearsParseOrchestrator.month_name_to_number(end_month_name)
+            start_month = SpanParserStrategy.month_name_to_number(start_month_name)
+            end_month = SpanParserStrategy.month_name_to_number(end_month_name)
             if start_month is not None and end_month is not None:
                 span = Span(
                     start_year=page_year,

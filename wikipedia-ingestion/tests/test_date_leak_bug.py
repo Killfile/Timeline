@@ -8,7 +8,7 @@ don't have explicit date information.
 import pytest
 from pathlib import Path
 from ingestion_list_of_years import _extract_events_section_items_with_report
-from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 
 
 def test_date_does_not_leak_between_events():

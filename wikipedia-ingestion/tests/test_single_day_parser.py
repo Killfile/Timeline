@@ -125,7 +125,7 @@ class TestSingleDayParser:
     
     @pytest.mark.parametrize("text,expected_day", [
         ("April 31", 31),
-        ("January 32", 32),
+        ("February 31", 31),
     ])
     def test_invalid_days_parsed_but_validation_elsewhere(self, text, expected_day):
         """Test that invalid days are parsed (validation happens elsewhere)."""

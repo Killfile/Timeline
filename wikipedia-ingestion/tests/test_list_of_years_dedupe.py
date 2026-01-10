@@ -5,7 +5,7 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 
 
 def test_parse_span_from_bullet_bc_range():

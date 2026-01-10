@@ -23,7 +23,7 @@ class SingleDayParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+        from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
         
         # EG: September 25
         # EG: August 29 – Christian Cross Asterism (astronomy) at Zenith of Lima, Peru.
@@ -31,7 +31,7 @@ class SingleDayParser(SpanParserStrategy):
         if m:
             month_name = m.group(1)
             day = int(m.group(2))
-            month = YearsParseOrchestrator.month_name_to_number(month_name)
+            month = SpanParserStrategy.month_name_to_number(month_name)
             if month is not None:
                 span = Span(
                     start_year=page_year,
@@ -49,4 +49,5 @@ class SingleDayParser(SpanParserStrategy):
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:
-        return int(1 * span.precision)
+        """Single day events have a weight of 1 day."""
+        return 1

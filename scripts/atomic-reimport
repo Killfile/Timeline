@@ -60,6 +60,7 @@ echo "========================================"
 echo "Step 2: Load (Upsert to Database)"
 echo "========================================"
 export LOADER_MODE=upsert
+export ARTIFACT_PATTERN="*.json"
 $COMPOSE run --rm -e LOADER_MODE=upsert database-loader
 
 echo ""

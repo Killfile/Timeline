@@ -127,8 +127,8 @@ class IngestionStrategy(ABC):
             "end_day": int | None,     # Optional: 1-31
             "is_bc_start": bool,       # Required: True if start is BC
             "is_bc_end": bool,         # Required: True if end is BC
-            "precision": str,          # Required: "year", "month", "day", "decade", "century"
-            "weight": int | None,      # Optional: duration in days (for packing priority)
+            "precision": float,        # Required: precision value (higher = more precise)
+            "weight": int,             # Required: duration in days (for packing priority)
             "category": str | None,    # Optional: categorization
             "url": str | None,         # Optional: source URL
             "_debug_extraction": dict | None  # Optional: extraction diagnostics

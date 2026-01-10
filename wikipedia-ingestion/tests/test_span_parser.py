@@ -1,7 +1,19 @@
 """Tests for SpanParser main class."""
 
 import pytest
-from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator, Span
+from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
+from span_parsing.span import Span
+from span_parsing.strategy import SpanParserStrategy
+from span_parsing.year_only_parser import YearOnlyParser
+from span_parsing.span import SpanPrecision
+
+
+class TestSpanParserStrategy(SpanParserStrategy):
+    """Concrete implementation for testing SpanParserStrategy methods."""
+    
+    def parse(self, text: str, page_year: int, page_bc: bool) -> Span | None:
+        # Dummy implementation for testing
+        return None
 
 
 class TestSpanParser:
@@ -126,9 +138,9 @@ class TestSpanParser:
     ])
     def test_month_name_to_number_all_months(self, month_name, expected_number):
         """Test month name conversion for all months in various cases."""
-        assert YearsParseOrchestrator.month_name_to_number(month_name) == expected_number
-        assert YearsParseOrchestrator.month_name_to_number(month_name.upper()) == expected_number
-        assert YearsParseOrchestrator.month_name_to_number(month_name.title()) == expected_number
+        assert SpanParserStrategy.month_name_to_number(month_name) == expected_number
+        assert SpanParserStrategy.month_name_to_number(month_name.upper()) == expected_number
+        assert SpanParserStrategy.month_name_to_number(month_name.title()) == expected_number
     
     @pytest.mark.parametrize("invalid_name", [
         "octember",
@@ -137,7 +149,7 @@ class TestSpanParser:
     ])
     def test_month_name_to_number_invalid(self, invalid_name):
         """Test that invalid month names return None."""
-        assert YearsParseOrchestrator.month_name_to_number(invalid_name) is None
+        assert SpanParserStrategy.month_name_to_number(invalid_name) is None
 
         
     def test_return_none_if_invalid_with_none(self):
@@ -174,3 +186,83 @@ class TestSpanParser:
         assert result.end_year == exp_ey, f"end_year mismatch for: {text}"
         assert result.end_month == exp_em, f"end_month mismatch for: {text}"
         assert result.end_day == exp_ed, f"end_day mismatch for: {text}"
+
+
+class TestSpanParserStrategy:
+    """Test cases for SpanParserStrategy methods."""
+    
+    def test_compute_weight_days_none_span(self):
+        """Test that None span returns None weight."""
+        strategy = YearOnlyParser()
+        assert strategy.compute_weight_days(None) is None
+    
+    def test_compute_weight_days_single_day_ad(self):
+        """Test weight calculation for single day in AD."""
+        strategy = YearOnlyParser()
+        span = Span(100, 100, 1, 1, 1, 1, False, False, "day", 1.0)
+        weight = strategy.compute_weight_days(span)
+        assert weight == 1
+    
+    def test_compute_weight_days_single_day_bc(self):
+        """Test weight calculation for single day in BC."""
+        strategy = YearOnlyParser()
+        span = Span(100, 100, 1, 1, 1, 1, True, True, "day", 1.0)
+        weight = strategy.compute_weight_days(span)
+        # BC dates can't be handled by Python datetime, so None
+        assert weight is None
+    
+    def test_compute_weight_days_year_span_ad(self):
+        """Test weight calculation for year span in AD."""
+        strategy = YearOnlyParser()
+        span = Span(100, 101, 1, 1, 12, 31, False, False, "year", 1.0)
+        weight = strategy.compute_weight_days(span)
+        # (date(101,12,31) - date(100,1,1)).days + 1 = 729 + 1 = 730
+        assert weight == 730
+    
+    def test_compute_weight_days_year_span_bc(self):
+        """Test weight calculation for year span in BC."""
+        strategy = YearOnlyParser()
+        span = Span(101, 100, 1, 1, 12, 31, True, True, "year", 1.0)
+        weight = strategy.compute_weight_days(span)
+        # BC dates can't be handled, so None
+        assert weight is None
+    
+    def test_compute_weight_days_mixed_era(self):
+        """Test weight calculation across BC/AD boundary."""
+        strategy = YearOnlyParser()
+        span = Span(1, 1, 1, 1, 12, 31, True, False, "year", 1.0)  # 1 BC to 1 AD
+        weight = strategy.compute_weight_days(span)
+        # 1 BC becomes year 0, which is invalid, so None
+        assert weight is None
+    
+    def test_compute_weight_days_month_span(self):
+        """Test weight calculation for month span."""
+        strategy = YearOnlyParser()
+        span = Span(100, 100, 1, 1, 2, 28, False, False, "month", 1.0)  # Jan 1 to Feb 28
+        weight = strategy.compute_weight_days(span)
+        # (date(100,2,28) - date(100,1,1)).days + 1 = 58 + 1 = 59
+        assert weight == 59
+    
+    def test_compute_weight_days_with_defaults(self):
+        """Test weight calculation with None month/day defaults."""
+        strategy = YearOnlyParser()
+        span = Span(100, 101, None, None, None, None, False, False, "year", 1.0)
+        weight = strategy.compute_weight_days(span)
+        # date(101,1,1) - date(100,1,1) = 365 days + 1 = 366
+        assert weight == 366
+    
+    def test_compute_weight_days_reverse_order(self):
+        """Test weight calculation when start > end (should swap)."""
+        strategy = YearOnlyParser()
+        span = Span(101, 100, 1, 1, 12, 31, False, False, "year", 1.0)
+        weight = strategy.compute_weight_days(span)
+        # Swaps to date(100,12,31) to date(101,1,1): 1 day + 1 = 2
+        assert weight == 2
+    
+    def test_compute_weight_days_exception_handling(self):
+        """Test that exceptions during calculation return None."""
+        strategy = YearOnlyParser()
+        # Create invalid span that will cause date() to fail
+        span = Span(100, 100, 13, 1, 1, 1, False, False, "invalid", 1.0)  # Invalid month 13
+        weight = strategy.compute_weight_days(span)
+        assert weight is None

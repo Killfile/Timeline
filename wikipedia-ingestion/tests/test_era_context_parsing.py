@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ingest_wikipedia import _infer_page_era_from_html
-from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 
 
 FIXTURES = Path(__file__).parent / "fixtures"

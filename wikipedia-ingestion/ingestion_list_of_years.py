@@ -31,13 +31,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
+from span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
 
 try:
     from .ingestion_common import (
@@ -46,9 +46,8 @@ try:
         RUN_ID,
         WIKIPEDIA_BASE,
         _canonicalize_wikipedia_url,
-        _get_html,
+        get_html,
         _resolve_page_identity,
-        insert_event,
         log_error,
         log_info,
     )
@@ -59,9 +58,8 @@ except ImportError:  # pragma: no cover
         RUN_ID,
         WIKIPEDIA_BASE,
         _canonicalize_wikipedia_url,
-        _get_html,
+        get_html,
         _resolve_page_identity,
-        insert_event,
         log_error,
         log_info,
     )
@@ -661,7 +659,7 @@ def _discover_and_filter_pages() -> tuple[list[dict], dict[str, int], dict[str, 
     exclusions_agg_samples: dict[str, list[dict]] = {}
 
     # Load the List of years index page
-    (index_pair, index_err) = _get_html(LIST_OF_YEARS_URL, context="list_of_years")
+    (index_pair, index_err) = get_html(LIST_OF_YEARS_URL, context="list_of_years")
     index_html, _index_url = index_pair
     if index_err or not index_html.strip():
         log_error(f"Failed to load List_of_years page: {index_err}")
@@ -705,7 +703,7 @@ def _process_event_item(
     pageid: int | None,
     title: str
 ) -> dict | None:
-    """Process a single event item and return an event dict ready for insertion.
+    """Process a single event item and return an event dict.
     
     Args:
         item: Extracted event item with text and context
@@ -717,7 +715,7 @@ def _process_event_item(
         title: Page title
         
     Returns:
-        Event dict ready for insert_event(), or None if item should be skipped
+        Event dict, or None if item should be skipped
     """
     b = item["text"]
     tag = (item.get("tag") or "").strip() or None
@@ -726,8 +724,7 @@ def _process_event_item(
     bullet_text = (b or "").strip()
     #is_circa = bool(re.match(r"^\s*(c\.|ca\.|circa)\b", bullet_text, flags=re.IGNORECASE))
 
-    from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
-    bullet_span = YearsParseOrchestrator.parse_span_from_bullet(
+    bullet_span = ParseOrchestratorFactory.get_orchestrator(ParseOrchestratorTypes.YEARS).parse_span_from_bullet(
         bullet_text, scope["start_year"], assume_is_bc=page_assume_is_bc
     )
     
@@ -755,13 +752,12 @@ def _process_event_item(
 
     category_value = tag or None
 
-    # Compute weight from bullet_span if available, otherwise compute from effective dates
-    weight = 0
-    if bullet_span is not None and hasattr(bullet_span, 'weight'):
-        weight = bullet_span.weight
+    # Compute weight from bullet_span if available, otherwise use default for year pages
+    weight = bullet_span.weight if bullet_span and hasattr(bullet_span, 'weight') and bullet_span.weight is not None else 365
     
-    # Extract precision value
-    precision_value = None
+    # Extract precision value - use default if span parsing failed
+    from span_parsing.span import SpanPrecision
+    precision_value = SpanPrecision.YEAR_ONLY  # Default for year pages
     if bullet_span is not None and hasattr(bullet_span, 'precision'):
         precision_value = bullet_span.precision
 
@@ -848,7 +844,7 @@ def _process_year_page(
     )
 
     # Load the page HTML
-    (page_pair, page_err) = _get_html(url, context=f"year_page={title}")
+    (page_pair, page_err) = get_html(url, context=f"year_page={title}")
     if page_err:
         log_error(f"Failed to load year page {title}: {page_err}")
         return None
@@ -913,8 +909,6 @@ def _process_year_page(
                     log_info(f"  excluded[{reason}] {s.get('text')!r} (h3={s.get('h3')!r})")
     except Exception:
         pass
-
-    time.sleep(0.3)
 
     # Infer BC/AD era from page HTML
     page_assume_is_bc = _infer_page_era_from_html(html, scope_is_bc=scope_is_bc)

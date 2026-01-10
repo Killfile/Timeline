@@ -73,7 +73,7 @@ class ParenthesizedMirroredEraYearRangeParser(SpanParserStrategy):
             end_day=31,
             start_year_is_bc=start_year_is_bc,
             end_year_is_bc=end_year_is_bc,
-            precision=SpanPrecision.YEAR_ONLY,
+            precision=SpanPrecision.APPROXIMATE,
             match_type=(
                 f"Mirrored era range: {s_y} {s_era} - {e_era} {e_y}"
                 + (f" (location: {location})" if location else "")

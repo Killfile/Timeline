@@ -120,7 +120,7 @@ class ParenthesizedCenturyWithLocationParser(SpanParserStrategy):
                 end_day=31,
                 start_year_is_bc=is_bc,
                 end_year_is_bc=is_bc,
-                precision=SpanPrecision.YEAR_ONLY,
+                precision=SpanPrecision.APPROXIMATE,
                 match_type=f"Century: {ordn}th century (location: {location})",
             )
             return self._return_none_if_invalid(span)

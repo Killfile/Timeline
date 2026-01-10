@@ -2,7 +2,7 @@
 
 import pytest
 from span_parsing.circa_year_parser import CircaYearParser
-from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 from span_parsing.span import SpanPrecision
 
 

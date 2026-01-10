@@ -23,14 +23,14 @@ class MonthOnlyParser(SpanParserStrategy):
             A Span object if parsing succeeds, None otherwise
         """
         # Lazy import to avoid circular dependency
-        from strategies.list_of_years.list_of_years_span_parser import YearsParseOrchestrator
+        from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
         
         # Match full month names case-insensitively, ensuring they're standalone words
         month_pattern = r"^\s*\b(january|february|march|april|may|june|july|august|september|october|november|december)\b"
         m = re.search(month_pattern, text, re.IGNORECASE)
         if m:
             month_name = m.group(1).lower()  # Normalize to lowercase for consistent processing
-            month = YearsParseOrchestrator.month_name_to_number(month_name)
+            month = SpanParserStrategy.month_name_to_number(month_name)
             if month is not None:
                 # Calculate actual days in month (simplified - doesn't handle leap years)
                 days_in_month = {
@@ -53,7 +53,9 @@ class MonthOnlyParser(SpanParserStrategy):
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:
-        base_weight = super().compute_weight_days(span)
-        if base_weight is None:
-            return None
-        return int(base_weight * span.precision)
+        """Compute weight for month-only spans.
+        
+        Returns the actual duration without scaling by precision.
+        Precision represents uncertainty, not duration.
+        """
+        return super().compute_weight_days(span)

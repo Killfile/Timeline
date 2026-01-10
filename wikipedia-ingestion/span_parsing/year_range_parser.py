@@ -75,7 +75,9 @@ class YearRangeParser(SpanParserStrategy):
         return None
     
     def compute_weight_days(self, span: Span) -> int | None:
-        base_weight = super().compute_weight_days(span)
-        if base_weight is None:
-            return None
-        return int(base_weight * span.precision)
+        """Compute weight for year range spans.
+        
+        Returns the actual duration without scaling by precision.
+        Precision represents uncertainty, not duration.
+        """
+        return super().compute_weight_days(span)

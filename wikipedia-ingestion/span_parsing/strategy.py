@@ -18,8 +18,8 @@ class SpanParserStrategy(ABC):
     def compute_weight_days(self, span: Span) -> int | None:
         """Compute the weight (approximate span length in days) for a span.
         
-        Uses year-level granularity only (no months/days yet).
-        1 year => 365 days.
+        Uses manual date arithmetic to handle BC years since Python's datetime
+        doesn't support years < 1.
         
         Args:
             span: The span to compute weight for
@@ -31,29 +31,38 @@ class SpanParserStrategy(ABC):
             return None
         
         try:
-            # Helper to convert span fields to a date object
-            def to_date(year: int, month: int, day: int, is_bc: bool) -> date:
-                # There is no year 0 in the proleptic Gregorian calendar.
-                # Python's datetime does not support BC dates, so for BC, we use 1 - year and treat as AD for diff.
-                # This is only for span calculation, not for display.
+            # Helper to convert BC/AD year to a continuous timeline number
+            # BC: 100 BC = -99, 1 BC = 0
+            # AD: 1 AD = 1, 100 AD = 100
+            def to_timeline_year(year: int, is_bc: bool) -> int:
                 if is_bc:
-                    # 1 BC => year 0, 2 BC => -1, etc.
-                    year = -year + 1
-                # Default month/day to 1 if missing/None/0
-                month = month or 1
-                day = day or 1
-                return date(year, month, day)
-
-            start = to_date(int(span.start_year), span.start_month, span.start_day, span.is_bc)
-            end = to_date(int(span.end_year), span.end_month, span.end_day, span.is_bc)
-
-            # If start > end, swap (shouldn't happen if validated, but for safety)
-            if start > end:
-                start, end = end, start
-
-            # The span includes both endpoints, so add 1 day
-            delta_days = (end - start).days + 1
-            return delta_days
+                    return -year + 1
+                return year
+            
+            # Default month/day to 1 if missing/None/0
+            start_month = span.start_month or 1
+            start_day = span.start_day or 1
+            end_month = span.end_month or 1
+            end_day = span.end_day or 1
+            
+            start_year = to_timeline_year(int(span.start_year), span.start_year_is_bc)
+            end_year = to_timeline_year(int(span.end_year), span.end_year_is_bc)
+            
+            # Calculate approximate days using year difference and month/day offsets
+            # This is approximate since we don't account for leap years in BC era
+            year_diff = end_year - start_year
+            days_from_years = year_diff * 365
+            
+            # Month to approximate day offset (using 30.44 days/month average)
+            month_to_days = [0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+            
+            start_day_of_year = month_to_days[start_month] + start_day if start_month <= 12 else start_day
+            end_day_of_year = month_to_days[end_month] + end_day if end_month <= 12 else end_day
+            
+            total_days = days_from_years + (end_day_of_year - start_day_of_year) + 1
+            
+            # Ensure minimum of 1 day
+            return max(1, total_days)
         except Exception:
             return None
     
@@ -98,3 +107,30 @@ class SpanParserStrategy(ABC):
             A Span object if parsing succeeds, None otherwise
         """
         pass
+
+    @staticmethod
+    def month_name_to_number(month_name: str) -> int | None:
+        """Convert month name to month number.
+
+        Args:
+            month_name: The name of the month (case-insensitive)
+
+        Returns:
+            The month number (1-12) or None if not recognized
+        """
+        month_name = month_name.lower()
+        months = {
+            "january": 1,
+            "february": 2,
+            "march": 3,
+            "april": 4,
+            "may": 5,
+            "june": 6,
+            "july": 7,
+            "august": 8,
+            "september": 9,
+            "october": 10,
+            "november": 11,
+            "december": 12,
+        }
+        return months.get(month_name)

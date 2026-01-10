@@ -33,6 +33,7 @@ data/
 # Logs
 *.log
 logs/
+cache/
 wikipedia-ingestion/REFACTORING_SUMMARY.md
 wikipedia-ingestion/future_revisions.md
 frontend/future_revisions.md
@@ -45,3 +46,5 @@ frontend/REFACTOR_COMPLETE.md
 frontend/RENDERING_FIX.md
 frontend/STATE_MANAGEMENT_FIX.md
 frontend/timeline.js.backup
+*/SPEC.md
+wikipedia-ingestion/artifacts/*.json

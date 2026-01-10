@@ -41,7 +41,7 @@ try:
         _should_include_page,
         _write_exclusions_report,
     )
-    from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
+    from .span_parsing import ListOfTimePeriodsSpanParser
     from .span_parsing.span import SpanEncoder
     from .strategy_base import (
         ArtifactResult,
@@ -70,7 +70,7 @@ except ImportError:  # pragma: no cover
         _should_include_page,
         _write_exclusions_report,
     )
-    from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
+    from strategies.list_of_time_periods.list_of_time_periods_span_parser import ListOfYearsSpanParser
     from span_parsing.span import SpanEncoder
     from strategy_base import (
         ArtifactResult,

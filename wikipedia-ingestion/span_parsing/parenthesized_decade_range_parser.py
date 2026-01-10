@@ -85,7 +85,7 @@ class ParenthesizedDecadeRangeParser(SpanParserStrategy):
             end_day=31,
             start_year_is_bc=start_is_bc,
             end_year_is_bc=end_is_bc,
-            precision=SpanPrecision.YEAR_ONLY,
+            precision=SpanPrecision.APPROXIMATE,
             match_type=(
                 f"Decade range: {s_decade}s - {e_decade}s"
                 + (f" (location: {location})" if location else "")
