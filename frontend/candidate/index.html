@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candidate 3.10: Hybrid Scaling with Precise Bar Alignment</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+        <div class="timeline-container">
+            <canvas id="timeline-canvas"></canvas>
+
+            <div id="tooltip" class="tooltip"></div>
+
+            <!-- Settings Button in Upper Right -->
+            <button class="settings-button" id="settings-button" title="Settings">
+                <span class="settings-icon">⚙️</span>
+            </button>
+
+            <!-- Settings Menu -->
+            <div class="fab-menu" id="settings-menu">
+                <button class="fab-item" id="fab-zoom-in" title="Zoom In">
+                    <span class="fab-icon">🔍+</span>
+                </button>
+                <button class="fab-item" id="fab-zoom-out" title="Zoom Out">
+                    <span class="fab-icon">🔍-</span>
+                </button>
+                <button class="fab-item" id="fab-reset" title="Reset to Full Timeline">
+                    <span class="fab-icon">🏠</span>
+                </button>
+                <button class="fab-item" id="fab-filter" title="Category Filter">
+                    <span class="fab-icon">🏷️</span>
+                </button>
+                <button class="fab-item" id="fab-search" title="Search Events">
+                    <span class="fab-icon">🔎</span>
+                </button>
+            </div>
+        <div class="filter-panel" id="filter-panel">
+            <div class="filter-header">
+                <h3>Filter by Category</h3>
+                <button class="filter-close" id="filter-close">×</button>
+            </div>
+            <div class="filter-search">
+                <input type="text" id="category-search" placeholder="Search categories..." />
+            </div>
+            <div class="filter-content" id="filter-content">
+                <!-- Categories will be populated dynamically -->
+            </div>
+        </div>
+
+        <!-- Search Panel -->
+        <div class="search-panel" id="search-panel">
+            <div class="search-header">
+                <h3>Search Events</h3>
+                <button class="search-close" id="search-close">×</button>
+            </div>
+            <div class="search-content">
+                <input type="text" id="search-input" placeholder="Search events..." />
+                <div class="search-results" id="search-results">
+                    <!-- Search results will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <div class="info-item">
+                <span class="label">Position:</span>
+                <span id="current-position">0 AD</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Zoom Level:</span>
+                <span id="zoom-level">Viewing 2000 years</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Band Layers:</span>
+                <span id="band-layers">1</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Loading Strategy:</span>
+                <span id="loading-strategy">Adaptive</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Cache Status:</span>
+                <span id="cache-status">0 regions cached</span>
+            </div>
+        </div>
+
+        <div class="loading-indicator" id="loading-indicator">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading events...</div>
+        </div>
+
+        <!-- Event Details Modal -->
+        <div class="modal" id="event-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="modal-title">Event Details</h2>
+                    <button class="modal-close" id="modal-close">&times;</button>
+                </div>
+                <div class="modal-body" id="modal-body">
+                    <!-- Event details will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="timeline.js"></script>
+</body>
+</html>

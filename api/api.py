@@ -475,6 +475,8 @@ def get_events_by_bins(
             bin_end = zone_start + ((i + 1) * bin_width)
             
             # Event overlaps bin if: event_start <= bin_end AND event_end >= bin_start
+            # Filter out events with weight > 2x viewport_span (too long for current zoom level)
+            max_weight = viewport_span * 2 * 365
             subquery = """
                 (SELECT id, title, description, start_year, start_month, start_day,
                         end_year, end_month, end_day,
@@ -485,11 +487,13 @@ def get_events_by_bins(
                  WHERE weight IS NOT NULL
                    AND start_year IS NOT NULL
                    AND end_year IS NOT NULL
+                   AND weight <= %s
                    AND to_fractional_year(start_year, is_bc_start, start_month, start_day) <= %s
                    AND to_fractional_year(end_year, is_bc_end, end_month, end_day) >= %s
             """
-            params.extend([bin_num, bin_end, bin_start])
+            params.extend([bin_num, max_weight, bin_end, bin_start])
             
+            print(f"Max weight for bin {bin_num}: {max_weight}")
             # Handle multiple categories
             if category and len(category) > 0:
                 placeholders = ','.join(['%s'] * len(category))

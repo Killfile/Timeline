@@ -2,10 +2,8 @@ FROM nginx:alpine
 
 WORKDIR /usr/share/nginx/html
 
-# Copy static files
-COPY index.html .
-COPY *.js .
-COPY style.css .
+# Copy all candidate directories
+COPY candidate*/ ./
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
