@@ -60,6 +60,9 @@ class HistoricalEvent(BaseModel):
     wikipedia_url: Optional[str] = None
     display_year: Optional[str] = None
     bin_num: Optional[int] = None  # For 15-bin system (0-14)
+    extraction_method: Optional[str] = None  # How the date was extracted
+    extract_snippet: Optional[str] = None  # Text snippet used for extraction
+    span_match_notes: Optional[str] = None  # Notes about span matching
 
 
 class TimelineStats(BaseModel):
@@ -231,6 +234,44 @@ def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[s
         cursor.close()
 
 
+def fetch_extraction_debug(conn, event_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Fetch extraction debug information for a list of event IDs.
+    
+    Args:
+        conn: Database connection
+        event_ids: List of event IDs
+        
+    Returns:
+        Dictionary mapping event_id to extraction debug info
+    """
+    if not event_ids:
+        return {}
+    
+    cursor = conn.cursor()
+    try:
+        placeholders = ','.join(['%s'] * len(event_ids))
+        cursor.execute(
+            f"""
+            SELECT historical_event_id, extraction_method, extract_snippet, span_match_notes
+            FROM event_date_extraction_debug 
+            WHERE historical_event_id IN ({placeholders})
+            """,
+            event_ids
+        )
+        
+        debug_by_id = {}
+        for row in cursor.fetchall():
+            debug_by_id[row['historical_event_id']] = {
+                'extraction_method': row['extraction_method'],
+                'extract_snippet': row['extract_snippet'],
+                'span_match_notes': row['span_match_notes']
+            }
+        
+        return debug_by_id
+    finally:
+        cursor.close()
+
+
 @app.get("/events", response_model=List[HistoricalEvent])
 def get_events(
     start_year: Optional[int] = Query(None, description="Filter events starting from this year"),
@@ -395,14 +436,21 @@ def get_events(
         # Fetch enrichment categories for all events
         event_ids = [event['id'] for event in events]
         enrichments = fetch_event_enrichments(conn, event_ids)
+        extraction_debug = fetch_extraction_debug(conn, event_ids)
         
-        # Add display year and enrichment categories to each event
+        # Add display year, enrichment categories, and extraction debug to each event
         for event in events:
             if event['start_year']:
                 event['display_year'] = format_year_display(event['start_year'], event['is_bc_start'])
             
             # Add enrichment categories
             event['categories'] = enrichments.get(event['id'], [])
+            
+            # Add extraction debug info
+            debug_info = extraction_debug.get(event['id'], {})
+            event['extraction_method'] = debug_info.get('extraction_method')
+            event['extract_snippet'] = debug_info.get('extract_snippet')
+            event['span_match_notes'] = debug_info.get('span_match_notes')
         
         return events
     
@@ -528,12 +576,19 @@ def get_events_by_bins(
         # Fetch enrichment categories
         event_ids = [event['id'] for event in events]
         enrichments = fetch_event_enrichments(conn, event_ids)
+        extraction_debug = fetch_extraction_debug(conn, event_ids)
         
-        # Add display year and enrichments
+        # Add display year, enrichments, and extraction debug
         for event in events:
             if event['start_year']:
                 event['display_year'] = format_year_display(event['start_year'], event['is_bc_start'])
             event['categories'] = enrichments.get(event['id'], [])
+            
+            # Add extraction debug info
+            debug_info = extraction_debug.get(event['id'], {})
+            event['extraction_method'] = debug_info.get('extraction_method')
+            event['extract_snippet'] = debug_info.get('extract_snippet')
+            event['span_match_notes'] = debug_info.get('span_match_notes')
         
         return events
     

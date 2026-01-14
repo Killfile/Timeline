@@ -46,5 +46,6 @@ frontend/REFACTOR_COMPLETE.md
 frontend/RENDERING_FIX.md
 frontend/STATE_MANAGEMENT_FIX.md
 frontend/timeline.js.backup
+frontend/candidate_*/*
 */SPEC.md
 wikipedia-ingestion/artifacts/*.json

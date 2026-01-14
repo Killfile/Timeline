@@ -1,5 +1,5 @@
-// Candidate 3.11: Temporal Conflict Resolution with Central Axis Clearance
-// Events placed in bands with central lane clear for axis, no visual overlaps, temporal conflicts prevent same-band placement
+// Candidate 5: Alternative Rendering for Low-Precision Events
+// Low-precision events (precision = 0) are always rendered as small dots regardless of visual width
 
 const API_URL = 'http://localhost:8000';
 
@@ -584,16 +584,17 @@ class TimelineRenderer {
         
         // Determine render style and visual bounds
         if (visualWidth < 8) {
-            // Dot: small circular area
+            // Dot: small circular area - use radius 6 to prevent overlap
+            const dotRadius = 6;
             event.visualBounds = {
-                left: startX - 6,
-                right: startX + 6,
-                width: 12,
+                left: startX - dotRadius,
+                right: startX + dotRadius,
+                width: dotRadius * 2,
                 type: 'dot'
             };
         } else if (visualWidth < 20) {
-            // Line: line with arrow, minimum 20px length
-            const lineLength = Math.max(visualWidth, 20);
+            // Line: line with arrow, use actual visual width with minimum for visibility
+            const lineLength = Math.max(visualWidth, 8);
             event.visualBounds = {
                 left: startX,
                 right: startX + lineLength,
@@ -989,6 +990,11 @@ class TimelineRenderer {
     }
 
     getEventRenderStyle(event) {
+        // CANDIDATE 5: Force low-precision events to always render as dots
+        if (event.precision === 0) {
+            return 'dot';
+        }
+
         // Calculate actual visual width at current zoom level
         const startX = this.yearToX(event.startYear);
         const endX = this.yearToX(event.endYear);
@@ -1016,7 +1022,13 @@ class TimelineRenderer {
     }
 
     drawEventAsLine(event, isHovered) {
-        const lineLength = Math.max(event.width || 20, 20); // Minimum line length
+        // Calculate actual visual width at current zoom level (date-accurate)
+        const startX = this.yearToX(event.startYear);
+        const endX = this.yearToX(event.endYear);
+        const visualWidth = Math.abs(endX - startX);
+        
+        // Use actual visual width, with minimum for visibility
+        const lineLength = Math.max(visualWidth, 8); // Minimum 8px for arrow visibility
         
         this.ctx.strokeStyle = event.color;
         this.ctx.lineWidth = isHovered ? 4 : 2;
@@ -1027,8 +1039,8 @@ class TimelineRenderer {
         this.ctx.lineTo(event.x + lineLength, event.y);
         this.ctx.stroke();
         
-        // Add arrowhead for direction
-        if (lineLength > 30) {
+        // Add arrowhead for direction (only if line is long enough)
+        if (lineLength > 12) {
             this.ctx.beginPath();
             this.ctx.moveTo(event.x + lineLength - 8, event.y - 3);
             this.ctx.lineTo(event.x + lineLength, event.y);
@@ -1248,6 +1260,14 @@ class TimelineRenderer {
                 <span class="event-detail-value">${event.importance_score || 'Not specified'}</span>
             </div>
             <div class="event-detail">
+                <span class="event-detail-label">Precision:</span>
+                <span class="event-detail-value">${event.precision !== undefined ? event.precision.toFixed(3) : 'Not specified'}</span>
+            </div>
+            <div class="event-detail">
+                <span class="event-detail-label">Extraction Method:</span>
+                <span class="event-detail-value">${event.extraction_method || 'Not available'}</span>
+            </div>
+            <div class="event-detail">
                 <span class="event-detail-label">Band:</span>
                 <span class="event-detail-value">${event.band || 0}</span>
             </div>
@@ -1278,6 +1298,10 @@ class TimelineRenderer {
                     end_month: event.end_month,
                     start_day: event.start_day,
                     end_day: event.end_day,
+                    precision: event.precision,
+                    extraction_method: event.extraction_method,
+                    extract_snippet: event.extract_snippet,
+                    span_match_notes: event.span_match_notes,
                     title: event.title,
                     description: event.description,
                     importance_score: event.importance_score,
