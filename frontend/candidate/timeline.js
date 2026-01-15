@@ -727,7 +727,7 @@ class TimelineRenderer {
                 bestBand = band;
             }
         }
-        
+        return bestBand;
     }
 
     yearToX(year) {
