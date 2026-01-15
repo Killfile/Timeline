@@ -785,9 +785,21 @@ class TimelineRenderer {
                 <div class="event-description">${(this.hoveredEvent.description || '').substring(0, 150)}...</div>
                 <div class="event-visibility" style="font-size: 10px; color: #4CAF50;">Fully visible</div>
             `;
-            this.tooltip.style.left = e.clientX + 10 + 'px';
-            this.tooltip.style.top = e.clientY + 10 + 'px';
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            const margin = 10;
+            this.tooltip.style.visibility = 'hidden';
             this.tooltip.classList.add('visible');
+            const rect = this.tooltip.getBoundingClientRect();
+            const tooltipW = rect.width || 200;
+            const tooltipH = rect.height || 80;
+            let left = (e.clientX > centerX) ? (e.clientX - margin - tooltipW) : (e.clientX + margin);
+            let top = (e.clientY > centerY) ? (e.clientY - margin - tooltipH) : (e.clientY + margin);
+            left = Math.max(4, Math.min(left, window.innerWidth - tooltipW - 4));
+            top = Math.max(4, Math.min(top, window.innerHeight - tooltipH - 4));
+            this.tooltip.style.left = left + 'px';
+            this.tooltip.style.top = top + 'px';
+            this.tooltip.style.visibility = 'visible';
         } else {
             this.tooltip.classList.remove('visible');
         }
