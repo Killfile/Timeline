@@ -34,20 +34,25 @@ from typing import Any
 
 try:
     from .ingestion_common import (
+
+        log_error,
+        log_info,
+    )
+    from .database_ingestion import (
         clear_previously_ingested,
         connect_db,
         insert_event,
-        log_error,
-        log_info,
     )
     from .strategy_base import validate_event_dict
 except ImportError:  # pragma: no cover
     from ingestion_common import (
+        log_error,
+        log_info,
+    )
+    from database_ingestion import (
         clear_previously_ingested,
         connect_db,
         insert_event,
-        log_error,
-        log_info,
     )
     from strategy_base import validate_event_dict
 

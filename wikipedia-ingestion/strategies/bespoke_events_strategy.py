@@ -22,20 +22,20 @@ from pathlib import Path
 try:
     from .ingestion_common import log_error, log_info
     from .strategy_base import (
-        ArtifactResult,
+        ArtifactData,
         FetchResult,
+        HistoricalEvent,
         IngestionStrategy,
         ParseResult,
-        validate_event_dict,
     )
 except ImportError:  # pragma: no cover
     from ingestion_common import log_error, log_info
     from strategy_base import (
-        ArtifactResult,
+        ArtifactData,
         FetchResult,
+        HistoricalEvent,
         IngestionStrategy,
         ParseResult,
-        validate_event_dict,
     )
 
 
@@ -54,6 +54,7 @@ TEMPLATE_EVENTS = [
         "is_bc_end": False,
         "precision": "day",
         "weight": 1,
+        "span_match_notes": "Manual curation - exact date specified",
         "category": "Space Exploration",
         "url": None,
     },
@@ -70,6 +71,7 @@ TEMPLATE_EVENTS = [
         "is_bc_end": False,
         "precision": "day",
         "weight": 1,
+        "span_match_notes": "Manual curation - historical record",
         "category": "Legal History",
         "url": "https://en.wikipedia.org/wiki/Magna_Carta",
     },
@@ -129,6 +131,7 @@ class BespokeEventsStrategy(IngestionStrategy):
                     "is_bc_end": "boolean (required)",
                     "precision": "string: 'year', 'month', 'day', 'decade', or 'century' (required)",
                     "weight": "integer (days) or null - used for display priority",
+                    "span_match_notes": "string (required) - notes about how the date was determined",
                     "category": "string or null",
                     "url": "string or null",
                 },
@@ -204,35 +207,34 @@ class BespokeEventsStrategy(IngestionStrategy):
             fetch_result: Result from fetch phase.
             
         Returns:
-            ParseResult with validated events.
+            ParseResult with validated events as HistoricalEvent instances.
         """
         log_info(f"[{self.name()}] Starting parse phase...")
         
         valid_events = []
         invalid_count = 0
         
-        for i, event in enumerate(self.loaded_events):
-            # Validate event schema
-            is_valid, error_msg = validate_event_dict(event)
-            
-            if not is_valid:
-                log_error(
-                    f"[{self.name()}] Invalid event at index {i}: {error_msg}. "
-                    f"Event: {event.get('title', '(no title)')}"
-                )
-                invalid_count += 1
-                continue
-            
-            # Add debug metadata
-            if "_debug_extraction" not in event:
-                event["_debug_extraction"] = {
+        for i, event_dict in enumerate(self.loaded_events):
+            # Add debug metadata if not present
+            if "_debug_extraction" not in event_dict:
+                event_dict["_debug_extraction"] = {
                     "method": "bespoke_events",
                     "source": "manual_curation",
                     "file": str(self.bespoke_file),
                     "index": i
                 }
             
-            valid_events.append(event)
+            # Try to create HistoricalEvent instance (will validate via __post_init__)
+            try:
+                event = HistoricalEvent.from_dict(event_dict)
+                valid_events.append(event)
+            except (ValueError, KeyError, TypeError) as e:
+                log_error(
+                    f"[{self.name()}] Invalid event at index {i}: {e}. "
+                    f"Event: {event_dict.get('title', '(no title)')}"
+                )
+                invalid_count += 1
+                continue
         
         log_info(
             f"[{self.name()}] Validated {len(valid_events)} events "
@@ -249,38 +251,25 @@ class BespokeEventsStrategy(IngestionStrategy):
             }
         )
     
-    def generate_artifacts(self, parse_result: ParseResult) -> ArtifactResult:
-        """Generate JSON artifact from validated events.
+    def generate_artifacts(self, parse_result: ParseResult) -> ArtifactData:
+        """Prepare artifact data for serialization.
         
         Args:
             parse_result: Result from parse phase.
             
         Returns:
-            ArtifactResult with artifact path.
+            ArtifactData ready for serialization.
         """
-        log_info(f"[{self.name()}] Generating artifacts...")
+        log_info(f"[{self.name()}] Preparing artifact data...")
         
-        artifact_path = self.output_dir / f"events_{self.name()}_{self.run_id}.json"
-        
-        artifact_data = {
-            "strategy": self.name(),
-            "run_id": self.run_id,
-            "generated_at_utc": datetime.utcnow().isoformat() + "Z",
-            "event_count": len(parse_result.events),
-            "metadata": parse_result.parse_metadata,
-            "events": parse_result.events
-        }
-        
-        with open(artifact_path, "w", encoding="utf-8") as f:
-            json.dump(artifact_data, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-        
-        log_info(f"[{self.name()}] Wrote artifact: {artifact_path}")
-        
-        return ArtifactResult(
+        return ArtifactData(
             strategy_name=self.name(),
-            artifact_path=artifact_path,
-            log_paths=[]
+            run_id=self.run_id,
+            generated_at_utc=datetime.utcnow().isoformat() + "Z",
+            event_count=len(parse_result.events),
+            events=parse_result.events,
+            metadata=parse_result.parse_metadata,
+            suggested_filename=f"events_{self.name()}_{self.run_id}.json"
         )
     
     def cleanup_logs(self) -> None:

@@ -22,28 +22,18 @@ try:
     from .ingestion_common import log_error, log_info
 
     # Test helper re-exports (used by tests importing from ingest_wikipedia)
-    from .ingestion_common import _canonicalize_wikipedia_url, _require_psycopg2, _resolve_page_identity  # noqa: F401
-    from .ingestion_list_of_years import (  # noqa: F401
-        _DASH_RE,
-        _extract_events_and_trends_bullets,
-        _extract_events_section_items,
-        _infer_page_era_from_html,
-        _parse_scope_from_title,
-        #_parse_span_from_bullet,
-    )
+    # ingestion_list_of_years.py has been consolidated into strategies/list_of_years/list_of_years_strategy.py
+    # Legacy helper for backward compatibility
+    
+    
 except ImportError:  # pragma: no cover
     from ingestion_common import log_error, log_info
 
     # Test helper re-exports
-    from ingestion_common import _canonicalize_wikipedia_url, _require_psycopg2, _resolve_page_identity  # noqa: F401
-    from ingestion_list_of_years import (  # noqa: F401
-        _DASH_RE,
-        _extract_events_and_trends_bullets,
-        _extract_events_section_items,
-        _infer_page_era_from_html,
-        _parse_scope_from_title,
-        #_parse_span_from_bullet,
-    )
+    # ingestion_list_of_years.py has been consolidated into strategies/list_of_years/list_of_years_strategy.py
+    # Legacy helper for backward compatibility
+
+   
 
 
 def ingest() -> None:
@@ -67,10 +57,13 @@ def ingest() -> None:
     try:
         from .strategies import ListOfYearsStrategy, BespokeEventsStrategy, ListOfTimePeriodsStrategy
         from .ingestion_common import LOGS_DIR, RUN_ID
+        from .span_parsing.span import SpanEncoder
     except ImportError:  # pragma: no cover
         from strategies import ListOfYearsStrategy, BespokeEventsStrategy, ListOfTimePeriodsStrategy
         from ingestion_common import LOGS_DIR, RUN_ID
+        from span_parsing.span import SpanEncoder
     
+    import json
     from pathlib import Path
     
     output_dir = Path(LOGS_DIR)
@@ -107,10 +100,31 @@ def ingest() -> None:
             # Run strategy phases
             fetch_result = strategy_obj.fetch()
             parse_result = strategy_obj.parse(fetch_result)
-            artifact_result = strategy_obj.generate_artifacts(parse_result)
+            artifact_data = strategy_obj.generate_artifacts(parse_result)
+            
+            # Write artifact to disk (centralized file writing)
+            filename = artifact_data.suggested_filename or f"events_{artifact_data.strategy_name}_{artifact_data.run_id}.json"
+            artifact_path = output_dir / filename
+            
+            artifact_dict = {
+                "strategy": artifact_data.strategy_name,
+                "run_id": artifact_data.run_id,
+                "generated_at_utc": artifact_data.generated_at_utc,
+                "event_count": artifact_data.event_count,
+                "metadata": artifact_data.metadata,
+                "events": [event.to_dict() for event in artifact_data.events]
+            }
+            
+            with open(artifact_path, "w", encoding="utf-8") as f:
+                json.dump(artifact_dict, f, indent=2, ensure_ascii=False, cls=SpanEncoder)
+                f.write("\n")
+            
+            log_info(f"Wrote artifact: {artifact_path}")
+            
+            # Run cleanup (for strategy-specific logs)
             strategy_obj.cleanup_logs()
             
-            log_info(f"=== Strategy {strategy_obj.name()} complete: {artifact_result.artifact_path} ===")
+            log_info(f"=== Strategy {strategy_obj.name()} complete: {artifact_path} ===")
             artifact_count += 1
             
         except Exception as e:

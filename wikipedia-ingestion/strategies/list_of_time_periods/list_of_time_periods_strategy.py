@@ -39,8 +39,9 @@ try:
     from ..span_parsing.span import Span, SpanEncoder, SpanPrecision
     from ..span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
     from ..strategy_base import (
-        ArtifactResult,
+        ArtifactData,
         FetchResult,
+        HistoricalEvent,
         IngestionStrategy,
         ParseResult,
     )
@@ -55,8 +56,9 @@ except ImportError:
     from span_parsing.span import Span, SpanEncoder, SpanPrecision
     from span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
     from strategy_base import (
-        ArtifactResult,
+        ArtifactData,
         FetchResult,
+        HistoricalEvent,
         IngestionStrategy,
         ParseResult,
     )
@@ -159,35 +161,25 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             }
         )
 
-    def generate_artifacts(self, parse_result: ParseResult) -> ArtifactResult:
-        """Generate JSON artifact file.
+    def generate_artifacts(self, parse_result: ParseResult) -> ArtifactData:
+        """Prepare artifact data for serialization.
 
         Args:
             parse_result: Result from parse phase with events.
 
         Returns:
-            ArtifactResult with paths to generated files.
+            ArtifactData ready for serialization.
         """
-        artifact_filename = f"events_{self.name()}_{self.run_id}.json"
-        artifact_path = self.output_dir / artifact_filename
+        log_info(f"[{self.name()}] Preparing artifact data...")
         
-        artifact_data = {
-            "strategy": self.name(),
-            "run_id": self.run_id,
-            "event_count": len(parse_result.events),
-            "generated_at": datetime.utcnow().isoformat(),
-            "metadata": parse_result.parse_metadata,
-            "events": parse_result.events,
-        }
-        
-        with open(artifact_path, 'w', encoding='utf-8') as f:
-            json.dump(artifact_data, f, indent=2, cls=SpanEncoder, ensure_ascii=False)
-        
-        log_info(f"Generated artifact: {artifact_path}")
-        
-        return ArtifactResult(
+        return ArtifactData(
             strategy_name=self.name(),
-            artifact_path=artifact_path,
+            run_id=self.run_id,
+            generated_at_utc=datetime.utcnow().isoformat() + "Z",
+            event_count=len(parse_result.events),
+            events=parse_result.events,
+            metadata=parse_result.parse_metadata,
+            suggested_filename=f"events_{self.name()}_{self.run_id}.json"
         )
 
     def cleanup_logs(self) -> None:
@@ -218,7 +210,7 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
                     return heading
         return None
 
-    def _extract_events_from_section(self, soup: BeautifulSoup, section_heading: Tag, section_name: str) -> list[dict]:
+    def _extract_events_from_section(self, soup: BeautifulSoup, section_heading: Tag, section_name: str) -> list[HistoricalEvent]:
         """Extract time period events from the section content.
 
         Args:
@@ -263,7 +255,7 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         match = re.match(r'h(\d)', tag.name)
         return int(match.group(1)) if match else 0
 
-    def _process_list(self, ul_tag: Tag, events: list[dict], header_stack: list[str], section_name: str) -> None:
+    def _process_list(self, ul_tag: Tag, events: list[HistoricalEvent], header_stack: list[str], section_name: str) -> None:
         """Process a <ul> list, extracting time periods recursively.
 
         Args:
@@ -327,7 +319,7 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         text = re.sub(r'\s+', ' ', text)
         return text.strip()
 
-    def _extract_event(self, li: Tag, li_text: str, header_stack: list[str], event_index: int, section_name: str) -> dict | None:
+    def _extract_event(self, li: Tag, li_text: str, header_stack: list[str], event_index: int, section_name: str) -> HistoricalEvent | None:
         """Extract a single time period event from a list item.
 
         Args:
@@ -338,7 +330,7 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             section_name: Name of the section being parsed
 
         Returns:
-            Event dictionary in canonical schema format, or None if parsing fails
+            HistoricalEvent instance in canonical schema format, or None if parsing fails
         """
         # Extract date range from parentheses at end
         date_match = re.search(r'\(([^)]*\d{3,4}[^)]*)\)\s*$', li_text)
@@ -381,15 +373,16 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         # Extract Wikipedia link if present
         wiki_link = self._extract_wiki_link(li)
         
-        # Create canonical event using CanonicalEvent.from_span_dict helper
+        # Create canonical event using HistoricalEvent.from_span_dict helper
         # which flattens the span fields to top level
         span_dict = span.to_dict()
         
-        canonical_event = CanonicalEvent.from_span_dict(
+        canonical_event = HistoricalEvent.from_span_dict(
             title=title,
             description=description,
             url=wiki_link or TIME_PERIODS_URL,
             span_dict=span_dict,
+            span_match_notes=span.match_type,
             category=header_stack[0] if header_stack else section_name,
             pageid=None,  # No pageid for list_of_time_periods entries
             debug_info={
@@ -400,7 +393,7 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             }
         )
         
-        return canonical_event.to_dict()
+        return canonical_event
 
     def _parse_date_range(self, date_str: str) -> Span | None:
         """Parse a date range string into a Span object using the span_parsing framework

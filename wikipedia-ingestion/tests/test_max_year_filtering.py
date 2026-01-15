@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ingestion_list_of_years import _parse_year, _should_include_page
+from strategies.list_of_years.list_of_years_strategy import _parse_year, _should_include_page
 
 
 class TestParseYear:

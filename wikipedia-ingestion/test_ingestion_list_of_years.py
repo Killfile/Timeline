@@ -5,7 +5,7 @@ They validate core business logic independently of IO operations.
 """
 
 import pytest
-from ingestion_list_of_years import (
+from strategies.list_of_years.list_of_years_strategy import (
     _parse_scope_from_title,
     _get_tag_and_month_from_h3_context,
     _is_heading_generic,

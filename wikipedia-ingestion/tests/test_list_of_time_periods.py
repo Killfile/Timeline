@@ -34,7 +34,7 @@ def test_extract_events_from_section_handles_nested_uls():
     events = strategy._extract_events_from_section(soup, heading, 'African periods')
 
     assert len(events) == 3
-    titles = [e['title'] for e in events]
+    titles = [e.title for e in events]
     assert any('Early Dynastic' in t for t in titles)
     assert any('Old Kingdom' in t for t in titles)
     assert any('Libyan Period' in t for t in titles)

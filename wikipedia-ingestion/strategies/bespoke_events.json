@@ -11,10 +11,11 @@
     "end_day": "integer 1-31 or null",
     "is_bc_start": "boolean (required)",
     "is_bc_end": "boolean (required)",
-    "precision": "string: 'year', 'month', 'day', 'decade', or 'century' (required)",
-    "weight": "integer (days) or null - used for display priority",
+    "precision": "float (required) - higher values indicate more precise dates (e.g., 1.0 for day, 0.5 for month, 0.1 for year)",
+    "weight": "integer (required) - duration in days, used for display priority",
     "category": "string or null",
-    "url": "string or null"
+    "url": "string (required) - source URL for the event",
+    "span_match_notes": "string (required) - notes about how the date was determined"
   },
   "events": [
     {
@@ -28,10 +29,11 @@
       "end_day": 20,
       "is_bc_start": false,
       "is_bc_end": false,
-      "precision": "day",
+      "precision": 1.0,
       "weight": 1,
       "category": "Space Exploration",
-      "url": null
+      "url": "https://example.com/mars-mission",
+      "span_match_notes": "Manual curation - exact date specified"
     },
     {
       "title": "Example: Signing of the Magna Carta",
@@ -44,10 +46,11 @@
       "end_day": 15,
       "is_bc_start": false,
       "is_bc_end": false,
-      "precision": "day",
+      "precision": 1.0,
       "weight": 1,
       "category": "Legal History",
-      "url": "https://en.wikipedia.org/wiki/Magna_Carta"
+      "url": "https://en.wikipedia.org/wiki/Magna_Carta",
+      "span_match_notes": "Manual curation - historical record"
     }
   ]
 }

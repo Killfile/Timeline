@@ -5,7 +5,7 @@ doesn't leak between events when processing multiple events from a year page.
 """
 
 import pytest
-from ingestion_list_of_years import _extract_events_section_items_with_report
+from strategies.list_of_years.list_of_years_strategy import _extract_events_section_items_with_report
 from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 
 

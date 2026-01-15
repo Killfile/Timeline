@@ -1264,6 +1264,10 @@ class TimelineRenderer {
                 <span class="event-detail-value">${event.precision !== undefined ? event.precision.toFixed(3) : 'Not specified'}</span>
             </div>
             <div class="event-detail">
+                <span class="event-detail-label">Match Type:</span>
+                <span class="event-detail-value">${event.match_type || event.span_match_notes || 'Not available'}</span>
+            </div>
+            <div class="event-detail">
                 <span class="event-detail-label">Extraction Method:</span>
                 <span class="event-detail-value">${event.extraction_method || 'Not available'}</span>
             </div>
@@ -1313,6 +1317,8 @@ class TimelineRenderer {
                     width: event.width,
                     band: event.band,
                     color: event.color
+                ,
+                    match_type: event.match_type || event.span_match_notes
                 }, null, 2)}</div>
             </div>
         `;

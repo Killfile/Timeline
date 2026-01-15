@@ -5,12 +5,12 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-import ingest_wikipedia as ingest
+import ingestion_common as ingestion_common_library
 
 
 def test_canonicalize_wikipedia_url_strips_fragment() -> None:
     assert (
-        ingest._canonicalize_wikipedia_url("https://en.wikipedia.org/wiki/980s_BC#Events")
+        ingestion_common_library._canonicalize_wikipedia_url("https://en.wikipedia.org/wiki/980s_BC#Events")
         == "https://en.wikipedia.org/wiki/980s_BC"
     )
 
@@ -25,13 +25,13 @@ def test_redirect_alias_dedupes_when_resolved() -> None:
     visited: set[tuple] = set()
 
     def visited_key_for(url: str) -> tuple:
-        identity = ingest._resolve_page_identity(url)
-        canonical_url = identity["canonical_url"] if identity else ingest._canonicalize_wikipedia_url(url)
+        identity = ingestion_common_library._resolve_page_identity(url)
+        canonical_url = identity["canonical_url"] if identity else ingestion_common_library._canonicalize_wikipedia_url(url)
         pageid = identity["pageid"] if identity else None
         return ("pageid", pageid) if pageid is not None else ("url", canonical_url)
 
     # Simulate a redirect alias by stubbing `_resolve_page_identity`.
-    real = ingest._resolve_page_identity
+    real = ingestion_common_library._resolve_page_identity
     try:
         def stub(u: str):
             # Both 986_BC and 980s_BC resolve to the same pageid.
@@ -39,7 +39,7 @@ def test_redirect_alias_dedupes_when_resolved() -> None:
                 return {"pageid": 12345, "canonical_url": "https://en.wikipedia.org/wiki/980s_BC"}
             return None
 
-        ingest._resolve_page_identity = stub  # type: ignore[assignment]
+        ingestion_common_library._resolve_page_identity = stub  # type: ignore[assignment]
 
         key1 = visited_key_for("https://en.wikipedia.org/wiki/986_BC")
         assert key1 == ("pageid", 12345)
@@ -49,4 +49,4 @@ def test_redirect_alias_dedupes_when_resolved() -> None:
         assert key2 == ("pageid", 12345)
         assert key2 in visited
     finally:
-        ingest._resolve_page_identity = real  # type: ignore[assignment]
+        ingestion_common_library._resolve_page_identity = real  # type: ignore[assignment]

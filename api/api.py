@@ -63,6 +63,7 @@ class HistoricalEvent(BaseModel):
     extraction_method: Optional[str] = None  # How the date was extracted
     extract_snippet: Optional[str] = None  # Text snippet used for extraction
     span_match_notes: Optional[str] = None  # Notes about span matching
+    match_type: Optional[str] = None  # Normalized match type (mirrors span_match_notes when available)
 
 
 class TimelineStats(BaseModel):
@@ -451,6 +452,10 @@ def get_events(
             event['extraction_method'] = debug_info.get('extraction_method')
             event['extract_snippet'] = debug_info.get('extract_snippet')
             event['span_match_notes'] = debug_info.get('span_match_notes')
+            # Expose match_type for frontend debug/modal convenience.
+            # Many ingestion parsers populate match_type into span_match_notes,
+            # so mirror it to a dedicated field for UI access.
+            event['match_type'] = debug_info.get('span_match_notes')
         
         return events
     
@@ -589,6 +594,7 @@ def get_events_by_bins(
             event['extraction_method'] = debug_info.get('extraction_method')
             event['extract_snippet'] = debug_info.get('extract_snippet')
             event['span_match_notes'] = debug_info.get('span_match_notes')
+            event['match_type'] = debug_info.get('span_match_notes')
         
         return events
     

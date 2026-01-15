@@ -38,7 +38,7 @@ try:
     from .span_parsing.span import Span, SpanEncoder, SpanPrecision
     from .list_of_time_periods_span_parser import ListOfTimePeriodsSpanParser
     from .strategy_base import (
-        ArtifactResult,
+        ArtifactData,
         FetchResult,
         IngestionStrategy,
         ParseResult,
@@ -53,7 +53,7 @@ except ImportError:
     from span_parsing.span import Span, SpanEncoder, SpanPrecision
     from list_of_time_periods_span_parser import ListOfTimePeriodsSpanParser
     from strategy_base import (
-        ArtifactResult,
+        ArtifactData,
         FetchResult,
         IngestionStrategy,
         ParseResult,
@@ -73,7 +73,7 @@ SECTION_HEADINGS = [
 ]
 
 
-class ListOfTimePeriodsStrategy(IngestionStrategy):
+class OldListOfTimePeriodsStrategy(IngestionStrategy):
     """Strategy for ingesting from Wikipedia's List of Time Periods page."""
 
     def name(self) -> str:
@@ -157,34 +157,25 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             }
         )
 
-    def generate_artifacts(self, parse_result: ParseResult) -> ArtifactResult:
-        """Generate JSON artifact file.
+    def generate_artifacts(self, parse_result: ParseResult) -> ArtifactData:
+        """Prepare artifact data for serialization.
 
         Args:
             parse_result: Result from parse phase with events.
 
         Returns:
-            ArtifactResult with paths to generated files.
+            ArtifactData ready for serialization.
         """
-        artifact_filename = f"{self.run_id}_{self.name()}.json"
-        artifact_path = self.output_dir / artifact_filename
+        log_info(f"[{self.name()}] Preparing artifact data...")
         
-        artifact_data = {
-            "strategy": self.name(),
-            "run_id": self.run_id,
-            "generated_at": datetime.utcnow().isoformat(),
-            "metadata": parse_result.parse_metadata,
-            "events": parse_result.events,
-        }
-        
-        with open(artifact_path, 'w', encoding='utf-8') as f:
-            json.dump(artifact_data, f, indent=2, cls=SpanEncoder, ensure_ascii=False)
-        
-        log_info(f"Generated artifact: {artifact_path}")
-        
-        return ArtifactResult(
+        return ArtifactData(
             strategy_name=self.name(),
-            artifact_path=artifact_path,
+            run_id=self.run_id,
+            generated_at_utc=datetime.utcnow().isoformat() + "Z",
+            event_count=len(parse_result.events),
+            events=parse_result.events,
+            metadata=parse_result.parse_metadata,
+            suggested_filename=f"events_{self.name()}_{self.run_id}.json"
         )
 
     def cleanup_logs(self) -> None:

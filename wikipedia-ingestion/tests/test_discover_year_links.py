@@ -1,7 +1,7 @@
 """Test the URL pattern matching for year page discovery."""
 
 import pytest
-from ingestion_list_of_years import _discover_yearish_links_from_list_of_years
+from strategies.list_of_years.list_of_years_strategy import _discover_yearish_links_from_list_of_years
 
 
 class TestDiscoverYearishLinks:
