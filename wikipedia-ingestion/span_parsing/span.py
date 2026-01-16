@@ -5,15 +5,16 @@ import json
 
 class SpanPrecision:
     """Enumeration of span precision levels."""
-    EXACT = 1000          # Exact date
-    APPROXIMATE = 100    # Approximate date
-    YEAR_ONLY = 10  # Year only precision
-    MONTH_ONLY = 1  # Month only precision
+    EXACT = 1000.0          # Exact date
+    APPROXIMATE = 100.0    # Approximate date
+    YEAR_ONLY = 10.0  # Year only precision
+    MONTH_ONLY = 1.0  # Month only precision
     SEASON_ONLY = 0.25   # Season only precision (e.g., Spring, Summer, etc.)
     # CIRCA should be a small, non-zero precision value so it doesn't
     # collapse downstream calculations to zero. Use a moderate approximate
     # precision (smaller than APPROXIMATE but larger than YEAR_ONLY).
     CIRCA = 1/100  # Circa precision -- Minimum value b/c of database precision limits
+    FALLBACK = 0.0    # Fallback precision when no better info is available
 
 
 @dataclass
@@ -90,7 +91,7 @@ class Span:
             "start_year_is_bc": self.start_year_is_bc,
             "end_year_is_bc": self.end_year_is_bc,
             "is_bc": self.is_bc,  # Legacy field for backwards compatibility
-            "precision": self.precision,
+            "precision": float(self.precision) if self.precision is not None else None,
             "match_type": self.match_type,
             "weight": self.weight,
         }

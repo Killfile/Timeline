@@ -377,19 +377,24 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         # which flattens the span fields to top level
         span_dict = span.to_dict()
         
+        # Debug: Check precision value
+        if span_dict.get('precision') == 0 or span_dict.get('precision') is None:
+            log_error(f"⚠️  PRECISION ISSUE: Event '{name}' has precision={span_dict.get('precision')}. Span: {span}")
+        
         canonical_event = HistoricalEvent.from_span_dict(
             title=title,
             description=description,
             url=wiki_link or TIME_PERIODS_URL,
             span_dict=span_dict,
-            span_match_notes=span.match_type,
             category=header_stack[0] if header_stack else section_name,
             pageid=None,  # No pageid for list_of_time_periods entries
+            span_match_notes=span.match_type,
             debug_info={
                 "event_key": f"time_period_{self.run_id}_{event_index}",
                 "original_li_text": li_text,
                 "header_stack": header_stack,
                 "section_name": section_name,
+                "span_match_type": span.match_type,
             }
         )
         

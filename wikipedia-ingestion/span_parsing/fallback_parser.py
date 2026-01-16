@@ -27,7 +27,7 @@ class FallbackSpanParser(SpanParserStrategy):
             end_day=31,
             start_year_is_bc=page_bc,
             end_year_is_bc=page_bc,
-            precision=SpanPrecision.CIRCA,
+            precision=SpanPrecision.FALLBACK,
             match_type="Fallback parser using page context"
         )
         return self._return_none_if_invalid(span)

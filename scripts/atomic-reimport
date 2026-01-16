@@ -48,6 +48,15 @@ echo ""
 echo "Press Ctrl+C to cancel, or wait 3 seconds to continue..."
 sleep 3
 
+echo "========================================"
+echo "Step 0: Clear logs directory from previous runs"
+echo "========================================"
+echo "Clearing logs directory..."
+rm -rf wikipedia-ingestion/logs/events_*.json
+rm -rf wikipedia-ingestion/logs/exclusions_*.json
+rm -rf wikipedia-ingestion/logs/load_report_*.json
+rm -rf wikipedia-ingestion/logs/ingest_*.log
+
 echo ""
 echo "========================================"
 echo "Step 1: Extract (Generate Artifacts)"

@@ -535,6 +535,16 @@ class TimelineRenderer {
         const widthMultiplier = strategy.spanRange[1] / this.viewportSpan;
 
         for (const event of this.events) {
+            // Skip events with invalid year data (check for null/undefined/NaN, but allow 0 which is valid for year 1 BC)
+            if (event.start_year === null || event.start_year === undefined || !isFinite(event.start_year)) {
+                console.warn(`Skipping event with invalid start_year: "${event.title}" (start_year=${event.start_year}, is_bc=${event.is_bc_start})`);
+                continue;
+            }
+            if (event.end_year === null || event.end_year === undefined || !isFinite(event.end_year)) {
+                console.warn(`Skipping event with invalid end_year: "${event.title}" (end_year=${event.end_year}, is_bc=${event.is_bc_end})`);
+                continue;
+            }
+
             const startYear = this.calculateFractionalYear(event.start_year, event.is_bc_start, event.start_month, event.start_day);
             const endYear = this.calculateFractionalYear(event.end_year, event.is_bc_end, event.end_month, event.end_day);
             const duration = Math.max(0.1, endYear - startYear);
@@ -624,12 +634,22 @@ class TimelineRenderer {
             return;
         }
         
-        // Track band occupancy with temporal ranges
-        const bandOccupancy = new Map(); // band -> array of [startTime, endTime, visualBounds]
+        // Track band occupancy with temporal ranges and event references
+        const bandOccupancy = new Map(); // band -> array of {event, startTime, endTime}
         
         for (const event of this.events) {
             const eventStart = event.startYear;
             const eventEnd = event.endYear;
+            
+            // Debug: Check for invalid temporal data
+            if (!isFinite(eventStart) || !isFinite(eventEnd)) {
+                console.error('Event has invalid temporal data:', {
+                    title: event.title,
+                    startYear: eventStart,
+                    endYear: eventEnd,
+                    raw: { start_year: event.start_year, end_year: event.end_year }
+                });
+            }
             
             // Find available band with temporal conflict resolution
             let assignedBand = -1;
@@ -644,6 +664,8 @@ class TimelineRenderer {
                 }
             }
             
+            const collisionInfo = [];
+            
             for (const bandOffset of bandOrder) {
                 const band = Math.floor(maxBands / 2) + bandOffset;
                 if (band < 0 || band >= maxBands) continue;
@@ -651,32 +673,47 @@ class TimelineRenderer {
                 // Check for temporal conflicts in this band
                 const bandEvents = bandOccupancy.get(band) || [];
                 let hasConflict = false;
+                const conflictingEvents = [];
                 
-                for (const [otherStart, otherEnd, otherBounds] of bandEvents) {
-                    // Check temporal overlap
-                    if (!(eventEnd <= otherStart || otherEnd <= eventStart)) {
-                        // Temporal overlap detected - check visual overlap
-                        if (this.visualElementsOverlap(event.visualBounds, otherBounds)) {
-                            hasConflict = true;
-                            break;
-                        }
+                for (const occupant of bandEvents) {
+                    // Pure temporal overlap check - if times overlap, can't share band
+                    if (!(eventEnd <= occupant.startTime || eventStart >= occupant.endTime)) {
+                        hasConflict = true;
+                        conflictingEvents.push(occupant);
                     }
                 }
                 
                 if (!hasConflict) {
                     assignedBand = band;
                     break;
+                } else if (conflictingEvents.length > 0) {
+                    // Record collision details for logging
+                    collisionInfo.push({ band, conflicts: conflictingEvents });
                 }
             }
             
-            // If no band found, force assign to least conflicted band
+            // If no conflict-free band found, skip this event
             if (assignedBand === -1) {
-                assignedBand = this.findLeastConflictedBand(bandOccupancy, event, maxBands);
+                // Build detailed collision report showing ALL conflicts
+                let collisionReport = `SKIPPED EVENT: "${event.title}" (${eventStart.toFixed(1)} to ${eventEnd.toFixed(1)}) - no conflict-free band available (checked ${maxBands} bands)\n`;
+                
+                // Show ALL bands with conflicts
+                for (const { band, conflicts } of collisionInfo) {
+                    collisionReport += `  Band ${band}: conflicts with ${conflicts.length} event(s)\n`;
+                    
+                    // Show ALL conflicting events
+                    for (const conflict of conflicts) {
+                        collisionReport += `    - "${conflict.event.title}" (${conflict.startTime.toFixed(1)} to ${conflict.endTime.toFixed(1)})\n`;
+                    }
+                }
+                
+                console.info(collisionReport);
+                continue;
             }
             
             // Position the event in the assigned band
-            if (assignedBand === -1 || !isFinite(assignedBand)) {
-                console.warn('Invalid band assignment for event:', event, { assignedBand, maxBands });
+            if (!isFinite(assignedBand)) {
+                console.info(`SKIPPED EVENT: "${event.title}" (${eventStart} to ${eventEnd}) - invalid band assignment`);
                 continue; // Skip this event
             }
             
@@ -690,11 +727,15 @@ class TimelineRenderer {
             event.y = y;
             event.band = assignedBand;
             
-            // Record occupancy
+            // Record occupancy with event reference
             if (!bandOccupancy.has(assignedBand)) {
                 bandOccupancy.set(assignedBand, []);
             }
-            bandOccupancy.get(assignedBand).push([eventStart, eventEnd, event.visualBounds]);
+            bandOccupancy.get(assignedBand).push({
+                event: event,
+                startTime: eventStart,
+                endTime: eventEnd
+            });
         }
 
         this.bandLayers = Math.max(1, Math.max(...this.events.map(e => e.band || 0)) + 1);
@@ -706,27 +747,45 @@ class TimelineRenderer {
         return !(bounds1.right + minSpacing < bounds2.left || bounds2.right + minSpacing < bounds1.left);
     }
 
-    findLeastConflictedBand(bandOccupancy, event, maxBands) {
+    findLeastConflictedBand(bandOccupancy, eventStart, eventEnd, maxBands) {
         let bestBand = 1; // Default to first upper band
         let minConflicts = Infinity;
         
+        const debugInfo = [];
+        const centerBand = Math.floor(maxBands / 2);
+        
         for (let band = 0; band < maxBands; band++) {
-            if (band === Math.floor(maxBands / 2)) continue; // Skip center band
+            // Skip center band (for axis) and band 0
+            if (band === centerBand || band === 0) continue;
             
             const bandEvents = bandOccupancy.get(band) || [];
             let conflictCount = 0;
             
             for (const [otherStart, otherEnd] of bandEvents) {
-                if (!(event.endYear <= otherStart || otherEnd <= event.startYear)) {
+                // Pure temporal overlap
+                if (!(eventEnd <= otherStart || eventStart >= otherEnd)) {
                     conflictCount++;
                 }
             }
+            
+            debugInfo.push({ band, events: bandEvents.length, conflicts: conflictCount });
             
             if (conflictCount < minConflicts) {
                 minConflicts = conflictCount;
                 bestBand = band;
             }
         }
+        
+        // Log if all bands have conflicts
+        if (minConflicts > 0 && Math.random() < 0.1) {
+            console.warn('All bands have conflicts! Choosing least bad option:', {
+                bestBand,
+                minConflicts,
+                eventRange: [eventStart, eventEnd],
+                bandStats: debugInfo.slice(0, 5) // Show first 5 bands
+            });
+        }
+        
         return bestBand;
     }
 
