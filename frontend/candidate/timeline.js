@@ -394,14 +394,32 @@ class TimelineRenderer {
             if (response.ok) {
                 let events = await response.json();
 
-                // VIEWPORT-AWARE FILTERING: Filter events to only include those that fit entirely within the actual viewport
+                // VIEWPORT-AWARE FILTERING: Filter events that overlap with the viewport
                 const viewportLeft = this.viewportCenter - this.viewportSpan / 2;
                 const viewportRight = this.viewportCenter + this.viewportSpan / 2;
 
                 events = events.filter(event => {
                     const startYear = this.calculateFractionalYear(event.start_year, event.is_bc_start, event.start_month, event.start_day);
                     const endYear = this.calculateFractionalYear(event.end_year, event.is_bc_end, event.end_month, event.end_day);
-                    return startYear >= viewportLeft && endYear <= viewportRight;
+                    
+                    // Include event if it overlaps with viewport (not entirely outside)
+                    if (endYear < viewportLeft || startYear > viewportRight) {
+                        return false;
+                    }
+                    
+                    // Calculate what percentage of the event is visible in viewport
+                    const eventDuration = endYear - startYear;
+                    if (eventDuration === 0) {
+                        return true; // Point events are always included if they overlap
+                    }
+                    
+                    const visibleStart = Math.max(startYear, viewportLeft);
+                    const visibleEnd = Math.min(endYear, viewportRight);
+                    const visibleDuration = visibleEnd - visibleStart;
+                    const visiblePercentage = visibleDuration / eventDuration;
+                    
+                    // Only include if at least 40% of the event is visible (less than 60% outside)
+                    return visiblePercentage >= 0.4;
                 });
 
                 // HYBRID DEDUPLICATION: Combine multiple strategies for optimal event selection
