@@ -631,9 +631,10 @@ class TimelineRenderer {
             };
         } else {
             // Bar: full width bar
+            // Normalize left/right for BC events where endX < startX
             event.visualBounds = {
-                left: startX,
-                right: endX,
+                left: Math.min(startX, endX),
+                right: Math.max(startX, endX),
                 width: visualWidth,
                 type: 'bar'
             };
@@ -780,7 +781,7 @@ class TimelineRenderer {
             for (const event of lowPrecisionEvents) {
                 const startYear = Math.floor(event.startYear);
                 const endYear = Math.floor(event.endYear);
-                const key = `${startYear}-${endYear}`;
+                const key = `${startYear}_${endYear}`; // Use underscore to avoid ambiguity with negative numbers
                 
                 if (!yearGroups.has(key)) {
                     yearGroups.set(key, []);
@@ -790,15 +791,18 @@ class TimelineRenderer {
             
             // Position each group evenly within its year range
             for (const [key, events] of yearGroups) {
-                const [startYear, endYear] = key.split('-').map(Number);
-                const yearSpan = endYear - startYear;
+                const [startYear, endYear] = key.split('_').map(Number);
+                const yearSpan = Math.abs(endYear - startYear);
                 const count = events.length;
                 
                 // Calculate even spacing across the year range
                 events.forEach((event, index) => {
                     // Distribute evenly: position = start + (index + 0.5) * (span / count)
                     const fraction = (index + 0.5) / count;
-                    const positionYear = startYear + fraction * yearSpan;
+                    // For BC events (startYear > endYear), go backwards in time
+                    const positionYear = startYear > endYear 
+                        ? startYear - fraction * yearSpan
+                        : startYear + fraction * yearSpan;
                     
                     event.x = this.yearToX(positionYear);
                     event.y = centerY; // On the axis
@@ -1275,9 +1279,19 @@ class TimelineRenderer {
         if (Math.abs(barWidth) > 30) {
             this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.beginPath();
-            this.ctx.moveTo(barX + barWidth, event.y - eventHeight/4);
-            this.ctx.lineTo(barX + barWidth + 8, event.y);
-            this.ctx.lineTo(barX + barWidth, event.y + eventHeight/4);
+            
+            // Triangle direction depends on whether we're going forward or backward in time
+            if (barWidth > 0) {
+                // Forward in time (AD): triangle points right
+                this.ctx.moveTo(barX + barWidth, event.y - eventHeight/4);
+                this.ctx.lineTo(barX + barWidth + 8, event.y);
+                this.ctx.lineTo(barX + barWidth, event.y + eventHeight/4);
+            } else {
+                // Backward in time (BC): triangle points left
+                this.ctx.moveTo(barX + barWidth, event.y - eventHeight/4);
+                this.ctx.lineTo(barX + barWidth - 8, event.y);
+                this.ctx.lineTo(barX + barWidth, event.y + eventHeight/4);
+            }
             this.ctx.closePath();
             this.ctx.fill();
         }
@@ -1287,44 +1301,6 @@ class TimelineRenderer {
             this.ctx.fillStyle = event.color;
             this.ctx.beginPath();
             this.ctx.arc(barX - 6, event.y, 3, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-
-        // Border with glow - matches exact bar width
-        if (isHovered) {
-            this.ctx.shadowColor = event.color;
-            this.ctx.shadowBlur = 15;
-        }
-
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.lineWidth = isHovered ? 3 : 2;
-        this.roundRect(barX, event.y - eventHeight/2, barWidth, eventHeight, 6);
-        this.ctx.stroke();
-        this.ctx.shadowBlur = 0;
-
-        // Label - positioned within the actual bar width
-        if (Math.abs(barWidth) > 40) {
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.font = 'bold 11px Trebuchet MS';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-            this.ctx.shadowBlur = 3;
-
-            const text = event.title.length > 12 ? event.title.substring(0, 9) + '...' : event.title;
-            this.ctx.fillText(text, barX + barWidth/2, event.y);
-
-            this.ctx.shadowBlur = 0;
-        }
-
-        // Duration indicator (small triangle at end) - positioned at actual end
-        if (Math.abs(barWidth) > 30) {
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            this.ctx.beginPath();
-            this.ctx.moveTo(barX + barWidth, event.y - eventHeight/4);
-            this.ctx.lineTo(barX + barWidth + 8, event.y);
-            this.ctx.lineTo(barX + barWidth, event.y + eventHeight/4);
-            this.ctx.closePath();
             this.ctx.fill();
         }
     }
@@ -1338,6 +1314,12 @@ class TimelineRenderer {
     }
 
     roundRect(x, y, width, height, radius) {
+        // Normalize negative widths (for BC events)
+        if (width < 0) {
+            x = x + width;
+            width = -width;
+        }
+        
         this.ctx.beginPath();
         this.ctx.moveTo(x + radius, y);
         this.ctx.lineTo(x + width - radius, y);
