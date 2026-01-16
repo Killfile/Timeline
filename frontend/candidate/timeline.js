@@ -634,10 +634,25 @@ class TimelineRenderer {
             return;
         }
         
+        // Special handling for low-precision events at deep zoom
+        const isDeepZoom = this.viewportSpan <= 10;
+        const lowPrecisionEvents = [];
+        const normalEvents = [];
+        
+        // Separate events by precision
+        for (const event of this.events) {
+            if (isDeepZoom && event.precision === 0.0) {
+                lowPrecisionEvents.push(event);
+            } else {
+                normalEvents.push(event);
+            }
+        }
+        
         // Track band occupancy with temporal ranges and event references
         const bandOccupancy = new Map(); // band -> array of {event, startTime, endTime}
         
-        for (const event of this.events) {
+        // Position normal events with collision detection
+        for (const event of normalEvents) {
             const eventStart = event.startYear;
             const eventEnd = event.endYear;
             
@@ -736,6 +751,50 @@ class TimelineRenderer {
                 startTime: eventStart,
                 endTime: eventEnd
             });
+        }
+        
+        // Special positioning for low-precision events at deep zoom
+        // These are distributed evenly on the axis as dots, ignoring collisions
+        if (isDeepZoom && lowPrecisionEvents.length > 0) {
+            // Group low-precision events by their year range
+            const yearGroups = new Map(); // Map<yearRange, events[]>
+            
+            for (const event of lowPrecisionEvents) {
+                const startYear = Math.floor(event.startYear);
+                const endYear = Math.floor(event.endYear);
+                const key = `${startYear}-${endYear}`;
+                
+                if (!yearGroups.has(key)) {
+                    yearGroups.set(key, []);
+                }
+                yearGroups.get(key).push(event);
+            }
+            
+            // Position each group evenly within its year range
+            for (const [key, events] of yearGroups) {
+                const [startYear, endYear] = key.split('-').map(Number);
+                const yearSpan = endYear - startYear;
+                const count = events.length;
+                
+                // Calculate even spacing across the year range
+                events.forEach((event, index) => {
+                    // Distribute evenly: position = start + (index + 0.5) * (span / count)
+                    const fraction = (index + 0.5) / count;
+                    const positionYear = startYear + fraction * yearSpan;
+                    
+                    event.x = this.yearToX(positionYear);
+                    event.y = centerY; // On the axis
+                    event.band = Math.floor(maxBands / 2); // Center band
+                    
+                    // Force dot rendering by setting visualBounds
+                    event.visualBounds = {
+                        left: event.x - 6,
+                        right: event.x + 6,
+                        width: 12,
+                        type: 'dot'
+                    };
+                });
+            }
         }
 
         this.bandLayers = Math.max(1, Math.max(...this.events.map(e => e.band || 0)) + 1);
