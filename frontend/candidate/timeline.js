@@ -989,9 +989,22 @@ class TimelineRenderer {
             return 0; // Default to year 0 if invalid
         }
         let fractionalYear = year;
-        if (month && isFinite(month)) fractionalYear += (month - 1) / 12;
-        if (day && isFinite(day)) fractionalYear += day / 365.25;
-        if (isBc) fractionalYear = -fractionalYear;
+        
+        // Calculate the fractional part from month and day
+        let fraction = 0;
+        if (month && isFinite(month)) fraction += (month - 1) / 12;
+        if (day && isFinite(day)) fraction += day / 365.25;
+        
+        if (isBc) {
+            // For BC dates, subtract the fraction so later dates are closer to zero (more recent)
+            // E.g., March 15, 44 BC: -44 + 0.207 = -43.793
+            //       March 20, 44 BC: -44 + 0.221 = -43.779 (more recent, closer to zero)
+            fractionalYear = -fractionalYear + fraction;
+        } else {
+            // For AD dates, add the fraction normally
+            fractionalYear += fraction;
+        }
+        
         return fractionalYear;
     }
 
