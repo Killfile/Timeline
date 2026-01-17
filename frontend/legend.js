@@ -22,6 +22,38 @@ class TimelineLegend {
     }
     
     /**
+     * Get semantic color for a category based on keywords
+     */
+    getSemanticColorForCategory(category) {
+        // Semantic coloring: map category keywords to brighter palette colors
+        const categoryLower = category.toLowerCase();
+        
+        // Define semantic categories with | delimited keywords and assigned colors
+        const semanticMappings = [
+            { keywords: 'war|battle|conflict|invasion|revolt|rebellion', color: '#fa709a' }, // Coral - conflict/aggression
+            { keywords: 'peace|treaty|diplomacy|alliance|negotiation|accord', color: '#4facfe' }, // Light blue - calm/cooperation
+            { keywords: 'science|technology|invention|discovery|research|innovation', color: '#43e97b' }, // Green - growth/knowledge
+            { keywords: 'politics|government|election|revolution|policy|administration', color: '#ffa751' }, // Orange - energy/power
+            { keywords: 'religion|culture|art|literature|music|philosophy|tradition', color: '#f093fb' }, // Pink - creativity/spirituality
+            { keywords: 'economy|trade|commerce|finance|business|industry|market', color: '#fee140' }, // Yellow - wealth/prosperity
+            { keywords: 'exploration|geography|travel|colony|discovery|expedition|migration', color: '#00f2fe' }, // Cyan - adventure/discovery
+            { keywords: 'military|army|navy|defense|strategy|tactics', color: '#764ba2' }, // Purple - authority/strength
+            { keywords: 'education|school|university|learning|teaching|academy', color: '#38f9d7' } // Teal - knowledge/wisdom
+        ];
+        
+        // Check each semantic category
+        for (const mapping of semanticMappings) {
+            const keywordList = mapping.keywords.split('|');
+            if (keywordList.some(keyword => categoryLower.includes(keyword.trim()))) {
+                return mapping.color;
+            }
+        }
+        
+        // Default: use the primary blue from original palette
+        return '#667eea';
+    }
+    
+    /**
      * Update categories and colors from event list
      */
     updateFromEvents(events) {
@@ -58,7 +90,7 @@ class TimelineLegend {
         // Update color assignments
         const colorMap = new Map();
         newCategories.forEach(category => {
-            colorMap.set(category, this.colorScale(category));
+            colorMap.set(category, this.getSemanticColorForCategory(category));
         });
         
         this.categories = newCategories;
@@ -70,7 +102,7 @@ class TimelineLegend {
         // Update legend display
         this.updateLegendDisplay();
         
-        console.log('[Legend] Updated', newCategories.size, 'categories');
+        console.log('[Legend] Updated', newCategories.size, 'categories with semantic colors');
     }
     
     /**
@@ -153,7 +185,7 @@ class TimelineLegend {
             const colorMap = new Map();
             categories.forEach(cat => {
                 this.categories.add(cat.name);
-                colorMap.set(cat.name, this.colorScale(cat.name));
+                colorMap.set(cat.name, this.getSemanticColorForCategory(cat.name));
             });
             
             this.orchestrator.setCategoryColors(colorMap);

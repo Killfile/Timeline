@@ -7,7 +7,7 @@ A containerized application that ingests historical events from Wikipedia and di
 - **Wikipedia Data Ingestion**: Automatically fetches historical events from Wikipedia articles
 - **Time-Series Database**: Stores events with BC/AD date support
 - **RESTful API**: FastAPI backend for querying historical events
-- **Interactive D3.js Timeline**: Zoomable and pannable timeline visualization
+- **Interactive Canvas Timeline**: Zoomable and pannable timeline visualization with semantic category coloring
 - **Filtering & Search**: Filter by category or search by keywords
 - **Event Details**: Click on any event to see detailed information and Wikipedia links
 
@@ -18,7 +18,7 @@ This application consists of four containerized services:
 1. **PostgreSQL Database** - Stores historical events with temporal data (BC/AD support)
 2. **Wikipedia Ingestion Service** - Python service that fetches events from Wikipedia API
 3. **API Service** - FastAPI backend providing endpoints for timeline data
-4. **Frontend** - Interactive D3.js visualization with zoom, pan, and filtering capabilities
+4. **Frontend** - Interactive Canvas-based visualization with zoom, pan, semantic coloring, and search highlighting
 
 ## Prerequisites
 

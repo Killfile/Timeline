@@ -82,6 +82,7 @@ class TimelineRenderer {
         this.lastMouseX = 0;
         this.lastMouseY = 0;
         this.hoveredEvent = null;
+        this.selectedEvent = null; // For search result highlighting
 
         // Band system
         this.bandLayers = 1;
@@ -103,6 +104,35 @@ class TimelineRenderer {
         this.determineLoadingStrategy();
         this.loadEventsForViewport();
         this.animate();
+    }
+
+    getColorForCategory(category) {
+        // Semantic coloring: map category keywords to brighter palette colors
+        const categoryLower = category.toLowerCase();
+        
+        // Define semantic categories with | delimited keywords and assigned colors from original palette
+        const semanticMappings = [
+            { keywords: 'war|battle|conflict|invasion|revolt|rebellion|defeat|conquest', color: '#fa709a' }, // Coral - conflict/aggression
+            { keywords: 'period|era|age|dynasty|epoch|century|millennium', color: '#61e5da' }, // Blue - time/history
+            { keywords: 'science|technology|invention|discovery|research|innovation', color: '#43e97b' }, // Green - growth/knowledge
+            { keywords: 'politics|government|election|revolution|policy|administration', color: '#ffa751' }, // Orange - energy/power
+            { keywords: 'religion|culture|art|literature|music|philosophy|tradition', color: '#f093fb' }, // Pink - creativity/spirituality
+            { keywords: 'economy|trade|commerce|finance|business|industry|market', color: '#fee140' }, // Yellow - wealth/prosperity
+            { keywords: 'exploration|geography|travel|colony|discovery|expedition|migration', color: '#00f2fe' }, // Cyan - adventure/discovery
+            { keywords: 'education|school|university|learning|teaching|academy', color: '#38f9d7' }, // Teal - knowledge/wisdom
+            { keywords: 'peace|treaty|diplomacy|alliance|negotiation|accord', color: '#4facfe' }, // Light blue - calm/cooperation
+        ];
+        
+        // Check each semantic category
+        for (const mapping of semanticMappings) {
+            const keywordList = mapping.keywords.split('|');
+            if (keywordList.some(keyword => categoryLower.includes(keyword.trim()))) {
+                return mapping.color;
+            }
+        }
+        
+        // Default: use the primary blue from original palette
+        return '#AAAAAA';
     }
 
     setupCanvas() {
@@ -294,6 +324,7 @@ class TimelineRenderer {
             }
 
             const { x: mouseX, y: mouseY } = this.getCanvasCoordinates(e);
+            let clickedEvent = null;
 
             for (const event of this.events) {
                 if (event.visualBounds && event.y !== undefined) {
@@ -305,11 +336,22 @@ class TimelineRenderer {
                     // Use visual bounds for horizontal detection
                     if (mouseX >= event.visualBounds.left && mouseX <= event.visualBounds.right &&
                         mouseY >= bandTop && mouseY <= bandBottom) {
-                        this.showEventModal(event);
+                        clickedEvent = event;
                         break;
                     }
                 }
             }
+
+            if (clickedEvent) {
+                // If clicking on an event, set it as selected and show modal
+                this.selectedEvent = clickedEvent;
+                this.showEventModal(clickedEvent);
+            } else {
+                // If clicking on empty space, clear selection
+                this.selectedEvent = null;
+            }
+            
+            this.scheduleRender(); // Re-render to show selection changes
         });
 
         // Modal event listeners
@@ -594,7 +636,7 @@ class TimelineRenderer {
             event.startYear = startYear;
             event.endYear = endYear;
             event.duration = duration;
-            event.color = this.eventColors[event.id % this.eventColors.length];
+            event.color = this.getColorForCategory(event.categories && event.categories.length > 0 ? event.categories[0].category : 'Unknown');
             
             // Calculate visual bounds for collision detection
             this.calculateEventVisualBounds(event);
@@ -1136,19 +1178,20 @@ class TimelineRenderer {
         for (const event of eventsToDraw) {
             if (event.x === undefined || event.x === null || !isFinite(event.x)) continue;
 
-            const isHovered = this.hoveredEvent === event;
+            const isHovered = this.hoveredEvent && this.hoveredEvent.id === event.id;
+            const isSelected = this.selectedEvent && this.selectedEvent.id === event.id;
             const renderStyle = this.getEventRenderStyle(event);
             
             switch (renderStyle) {
                 case 'dot':
-                    this.drawEventAsDot(event, isHovered);
+                    this.drawEventAsDot(event, isHovered, isSelected);
                     break;
                 case 'line':
-                    this.drawEventAsLine(event, isHovered);
+                    this.drawEventAsLine(event, isHovered, isSelected);
                     break;
                 case 'bar':
                 default:
-                    this.drawEventAsBar(event, isHovered);
+                    this.drawEventAsBar(event, isHovered, isSelected);
                     break;
             }
         }
@@ -1175,18 +1218,31 @@ class TimelineRenderer {
         }
     }
 
-    drawEventAsDot(event, isHovered) {
+    drawEventAsDot(event, isHovered, isSelected) {
         this.ctx.fillStyle = event.color;
         this.ctx.strokeStyle = isHovered ? '#ffffff' : event.color;
         this.ctx.lineWidth = isHovered ? 2 : 1;
         
+        // Add pulsing glow for selected events
+        if (isSelected) {
+            const pulseIntensity = (Math.sin(this.animationTime * 2) + 1) / 2; // 0 to 1, slower pulse
+            this.ctx.shadowColor = '#ffffff'; // White glow for better visibility
+            this.ctx.shadowBlur = 20 + pulseIntensity * 40; // 20-60px blur, much more pronounced
+            
+            // Also make the dot slightly larger and brighter
+            this.ctx.fillStyle = this.lightenColor(event.color, 0.4);
+        }
+        
         this.ctx.beginPath();
-        this.ctx.arc(event.x, event.y, isHovered ? 6 : 4, 0, Math.PI * 2);
+        this.ctx.arc(event.x, event.y, isHovered ? 6 : (isSelected ? 7 : 4), 0, Math.PI * 2);
         this.ctx.fill();
         this.ctx.stroke();
+        
+        // Reset shadow
+        this.ctx.shadowBlur = 0;
     }
 
-    drawEventAsLine(event, isHovered) {
+    drawEventAsLine(event, isHovered, isSelected) {
         // Calculate actual visual width at current zoom level (date-accurate)
         const startX = this.yearToX(event.startYear);
         const endX = this.yearToX(event.endYear);
@@ -1196,8 +1252,16 @@ class TimelineRenderer {
         const lineLength = Math.max(visualWidth, 8); // Minimum 8px for arrow visibility
         
         this.ctx.strokeStyle = event.color;
-        this.ctx.lineWidth = isHovered ? 4 : 2;
+        this.ctx.lineWidth = isHovered ? 4 : (isSelected ? 5 : 2);
         this.ctx.lineCap = 'round';
+        
+        // Add pulsing glow for selected events
+        if (isSelected) {
+            const pulseIntensity = (Math.sin(this.animationTime * 2) + 1) / 2; // 0 to 1, slower pulse
+            this.ctx.shadowColor = '#ffffff'; // White glow for better visibility
+            this.ctx.shadowBlur = 20 + pulseIntensity * 40; // 20-60px blur, much more pronounced
+            this.ctx.strokeStyle = this.lightenColor(event.color, 0.3); // Brighter color
+        }
         
         this.ctx.beginPath();
         this.ctx.moveTo(event.x, event.y);
@@ -1212,9 +1276,12 @@ class TimelineRenderer {
             this.ctx.lineTo(event.x + lineLength - 8, event.y + 3);
             this.ctx.stroke();
         }
+        
+        // Reset shadow
+        this.ctx.shadowBlur = 0;
     }
 
-    drawEventAsBar(event, isHovered) {
+    drawEventAsBar(event, isHovered, isSelected) {
         // Calculate actual visual width at current zoom level
         const startX = this.yearToX(event.startYear);
         const endX = this.yearToX(event.endYear);
@@ -1251,9 +1318,20 @@ class TimelineRenderer {
         if (isHovered) {
             eventGradient.addColorStop(0, this.lightenColor(event.color, 0.3));
             eventGradient.addColorStop(1, this.lightenColor(event.color, 0.1));
+        } else if (isSelected) {
+            // Make selected bars brighter and more saturated
+            eventGradient.addColorStop(0, this.lightenColor(event.color, 0.5));
+            eventGradient.addColorStop(1, this.lightenColor(event.color, 0.2));
         } else {
             eventGradient.addColorStop(0, event.color);
             eventGradient.addColorStop(1, this.darkenColor(event.color, 0.2));
+        }
+
+        // Add pulsing glow for selected events
+        if (isSelected) {
+            const pulseIntensity = (Math.sin(this.animationTime * 2) + 1) / 2; // 0 to 1, slower pulse
+            this.ctx.shadowColor = '#ffffff'; // White glow for better visibility
+            this.ctx.shadowBlur = 25 + pulseIntensity * 50; // 25-75px blur, very pronounced
         }
 
         // Rounded rectangle - exact width of actual duration
@@ -1265,10 +1343,13 @@ class TimelineRenderer {
         if (isHovered) {
             this.ctx.shadowColor = event.color;
             this.ctx.shadowBlur = 15;
+        } else if (isSelected) {
+            this.ctx.shadowColor = '#ffffff';
+            this.ctx.shadowBlur = 20;
         }
 
-        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        this.ctx.lineWidth = isHovered ? 3 : 2;
+        this.ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.9)';
+        this.ctx.lineWidth = isHovered ? 3 : (isSelected ? 4 : 2);
         this.roundRect(barX, event.y - eventHeight/2, barWidth, eventHeight, 6);
         this.ctx.stroke();
         this.ctx.shadowBlur = 0;
@@ -1659,8 +1740,15 @@ class TimelineRenderer {
             `;
 
             resultItem.addEventListener('click', () => {
-                // Center on the event
+                // Set selected event for highlighting
+                this.selectedEvent = event;
+                
+                // Center on the event with smart zoom
+                const eventSpan = Math.abs(event.end_year - event.start_year) || 1;
+                const targetSpan = Math.max(eventSpan * 3.33, 3); // 30% viewport occupation, minimum 3 years
+                this.viewportSpan = targetSpan;
                 this.viewportCenter = startYear;
+                
                 this.loadEventsForViewport();
                 this.scheduleRender();
                 this.hideSearchPanel();
