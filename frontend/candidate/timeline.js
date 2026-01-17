@@ -1731,54 +1731,129 @@ class TimelineRenderer {
         this.scheduleRender();
     }
 
-    performSearch(query) {
+    async performSearch(query) {
         if (!query.trim()) {
             this.searchResults.innerHTML = '';
             return;
         }
 
-        const searchTerm = query.toLowerCase();
-        const results = this.events.filter(event => {
-            const title = (event.title || '').toLowerCase();
-            const description = (event.description || '').toLowerCase();
-            return title.includes(searchTerm) || description.includes(searchTerm);
-        }).slice(0, 10); // Limit to 10 results
+        const searchTerm = query.trim();
 
-        this.searchResults.innerHTML = '';
+        // Show loading state
+        this.searchResults.innerHTML = '<p>Searching...</p>';
 
-        if (results.length === 0) {
-            this.searchResults.innerHTML = '<p>No events found</p>';
-            return;
-        }
+        try {
+            let results = [];
 
-        results.forEach(event => {
-            const resultItem = document.createElement('div');
-            resultItem.className = 'search-result-item';
-
-            const startYear = this.calculateFractionalYear(event.start_year, event.is_bc_start, event.start_month, event.start_day);
-
-            resultItem.innerHTML = `
-                <div class="search-result-title">${event.title || 'Untitled'}</div>
-                <div class="search-result-date">${this.formatYear(startYear)}</div>
-            `;
-
-            resultItem.addEventListener('click', () => {
-                // Set selected event for highlighting
-                this.selectedEvent = event;
+            // Use API search for queries 3+ characters
+            if (searchTerm.length >= 3) {
+                const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(searchTerm)}&limit=20`);
                 
-                // Center on the event with smart zoom
-                const eventSpan = Math.abs(event.end_year - event.start_year) || 1;
-                const targetSpan = Math.max(eventSpan * 3.33, 3); // 30% viewport occupation, minimum 3 years
-                this.viewportSpan = targetSpan;
-                this.viewportCenter = startYear;
-                
-                this.loadEventsForViewport();
-                this.scheduleRender();
-                this.hideSearchPanel();
+                if (response.ok) {
+                    results = await response.json();
+                } else {
+                    console.warn('API search failed, falling back to local search');
+                    // Fall back to local search
+                    results = this.events.filter(event => {
+                        const title = (event.title || '').toLowerCase();
+                        const description = (event.description || '').toLowerCase();
+                        return title.includes(searchTerm.toLowerCase()) || description.includes(searchTerm.toLowerCase());
+                    });
+                }
+            } else {
+                // Use local search for short queries
+                results = this.events.filter(event => {
+                    const title = (event.title || '').toLowerCase();
+                    const description = (event.description || '').toLowerCase();
+                    return title.includes(searchTerm.toLowerCase()) || description.includes(searchTerm.toLowerCase());
+                });
+            }
+
+            // Limit results for display
+            results = results.slice(0, 10);
+
+            this.searchResults.innerHTML = '';
+
+            if (results.length === 0) {
+                this.searchResults.innerHTML = '<p>No events found</p>';
+                return;
+            }
+
+            results.forEach(event => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'search-result-item';
+
+                const startYear = this.calculateFractionalYear(event.start_year, event.is_bc_start, event.start_month, event.start_day);
+
+                resultItem.innerHTML = `
+                    <div class="search-result-title">${event.title || 'Untitled'}</div>
+                    <div class="search-result-date">${this.formatYear(startYear)}</div>
+                `;
+
+                resultItem.addEventListener('click', () => {
+                    // Set selected event for highlighting
+                    this.selectedEvent = event;
+                    
+                    // Center on the event with smart zoom
+                    const eventSpan = Math.abs(event.end_year - event.start_year) || 1;
+                    const targetSpan = Math.max(eventSpan * 3.33, 3); // 30% viewport occupation, minimum 3 years
+                    this.viewportSpan = targetSpan;
+                    this.viewportCenter = startYear;
+                    
+                    this.loadEventsForViewport();
+                    this.scheduleRender();
+                    this.hideSearchPanel();
+                });
+
+                this.searchResults.appendChild(resultItem);
             });
 
-            this.searchResults.appendChild(resultItem);
-        });
+        } catch (error) {
+            console.error('Search failed:', error);
+            // Fall back to local search on error
+            const searchTerm = query.toLowerCase();
+            const results = this.events.filter(event => {
+                const title = (event.title || '').toLowerCase();
+                const description = (event.description || '').toLowerCase();
+                return title.includes(searchTerm) || description.includes(searchTerm);
+            }).slice(0, 10);
+
+            this.searchResults.innerHTML = '';
+
+            if (results.length === 0) {
+                this.searchResults.innerHTML = '<p>No events found</p>';
+                return;
+            }
+
+            results.forEach(event => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'search-result-item';
+
+                const startYear = this.calculateFractionalYear(event.start_year, event.is_bc_start, event.start_month, event.start_day);
+
+                resultItem.innerHTML = `
+                    <div class="search-result-title">${event.title || 'Untitled'}</div>
+                    <div class="search-result-date">${this.formatYear(startYear)}</div>
+                `;
+
+                resultItem.addEventListener('click', () => {
+                    // Set selected event for highlighting
+                    this.selectedEvent = event;
+                    
+                    // Center on the event with smart zoom
+                    const eventSpan = Math.abs(event.end_year - event.start_year) || 1;
+                    const targetSpan = Math.max(eventSpan * 3.33, 3); // 30% viewport occupation, minimum 3 years
+                    this.viewportSpan = targetSpan;
+                    this.viewportCenter = startYear;
+                    
+                    this.loadEventsForViewport();
+                    this.scheduleRender();
+                    this.hideSearchPanel();
+                });
+
+                this.searchResults.appendChild(resultItem);
+            });
+        }
     }
 }
 

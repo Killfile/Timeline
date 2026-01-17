@@ -8,7 +8,7 @@ A containerized application that ingests historical events from Wikipedia and di
 - **Time-Series Database**: Stores events with BC/AD date support
 - **RESTful API**: FastAPI backend for querying historical events
 - **Interactive Canvas Timeline**: Zoomable and pannable timeline visualization with semantic category coloring
-- **Filtering & Search**: Filter by category or search by keywords
+- **Filtering & Search**: Filter by category or search across the entire database by keywords
 - **Event Details**: Click on any event to see detailed information and Wikipedia links
 
 ## Architecture
