@@ -402,6 +402,18 @@ class TimelineRenderer {
 
         if (this.eventCache.has(cacheKey)) {
             this.events = this.eventCache.get(cacheKey);
+            
+            // ENSURE SELECTED EVENT IS ALWAYS INCLUDED: Even for cached events
+            if (this.selectedEvent) {
+                const selectedEventId = this.selectedEvent.id;
+                const hasSelectedEvent = this.events.some(event => event.id === selectedEventId);
+                
+                if (!hasSelectedEvent) {
+                    // Add the selected event to ensure it's always visible
+                    this.events.push(this.selectedEvent);
+                }
+            }
+            
             this.calculateBandPositions();
             this.applyCategoryFilter();
             return;
@@ -524,6 +536,17 @@ class TimelineRenderer {
                 }
 
                 events = finalEvents;
+
+                // ENSURE SELECTED EVENT IS ALWAYS INCLUDED: Add after all deduplication is complete
+                if (this.selectedEvent) {
+                    const selectedEventId = this.selectedEvent.id;
+                    const hasSelectedEvent = events.some(event => event.id === selectedEventId);
+                    
+                    if (!hasSelectedEvent) {
+                        // Add the selected event to ensure it's always visible
+                        events.push(this.selectedEvent);
+                    }
+                }
 
                 const cacheKey = this.getCacheKey(this.viewportCenter, this.viewportSpan);
                 this.eventCache.set(cacheKey, events);
