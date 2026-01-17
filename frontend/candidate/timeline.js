@@ -1751,6 +1751,21 @@ class TimelineRenderer {
                 
                 if (response.ok) {
                     results = await response.json();
+                    
+                    // Normalize API results to match frontend expected format
+                    results = results.map(event => ({
+                        ...event,
+                        // Convert single category to categories array
+                        categories: event.category ? [{ category: event.category }] : [],
+                        // Ensure month/day fields exist (null is fine)
+                        start_month: event.start_month || null,
+                        start_day: event.start_day || null,
+                        end_month: event.end_month || null,
+                        end_day: event.end_day || null,
+                        // Set defaults for missing fields
+                        weight: event.weight || null,
+                        precision: event.precision || null
+                    }));
                 } else {
                     console.warn('API search failed, falling back to local search');
                     // Fall back to local search
