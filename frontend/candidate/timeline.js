@@ -1519,6 +1519,10 @@ class TimelineRenderer {
                 <span class="event-detail-value">${event.extraction_method || 'Not available'}</span>
             </div>
             <div class="event-detail">
+                <span class="event-detail-label">Strategy:</span>
+                <span class="event-detail-value">${event.strategy || 'Unknown'}</span>
+            </div>
+            <div class="event-detail">
                 <span class="event-detail-label">Band:</span>
                 <span class="event-detail-value">${event.band || 0}</span>
             </div>
@@ -1541,6 +1545,7 @@ class TimelineRenderer {
                 <h3>Debug Information</h3>
                 <div class="debug-code">${JSON.stringify({
                     id: event.id,
+                    strategy: event.strategy,
                     start_year: event.start_year,
                     end_year: event.end_year,
                     is_bc_start: event.is_bc_start,
@@ -1563,8 +1568,7 @@ class TimelineRenderer {
                     y: event.y,
                     width: event.width,
                     band: event.band,
-                    color: event.color
-                ,
+                    color: event.color,
                     match_type: event.match_type || event.span_match_notes
                 }, null, 2)}</div>
             </div>

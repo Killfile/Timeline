@@ -1338,6 +1338,7 @@ function handleEventClick(event, d) {
     const title = document.getElementById('event-title');
     const period = document.getElementById('event-period');
     const category = document.getElementById('event-category');
+    const strategy = document.getElementById('event-strategy');
     const description = document.getElementById('event-description');
     const wikipediaLink = document.getElementById('event-wikipedia-link');
     
@@ -1382,6 +1383,9 @@ function handleEventClick(event, d) {
     }
     
     category.textContent = categoryDisplay;
+    
+    // Set strategy
+    strategy.textContent = d.strategy || 'Unknown';
     
     // Create detailed description with full text and placement data
     description.innerHTML = `
@@ -1475,6 +1479,9 @@ function handleEventClick(event, d) {
         <details style="margin-bottom: 1em; padding: 0.5em; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px;">
             <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5em; color: #333;">Source Data</summary>
             <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.25em 1em;">
+                <dt style="font-weight: bold;">Strategy:</dt>
+                <dd style="margin: 0;">${d.strategy || 'Unknown'}</dd>
+                
                 <dt style="font-weight: bold;">Wikipedia URL:</dt>
                 <dd style="margin: 0; word-break: break-all;"><a href="${d.wikipedia_url || '#'}" target="_blank" style="color: #667eea;">${d.wikipedia_url || 'N/A'}</a></dd>
                 

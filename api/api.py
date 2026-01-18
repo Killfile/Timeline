@@ -64,6 +64,7 @@ class HistoricalEvent(BaseModel):
     extract_snippet: Optional[str] = None  # Text snippet used for extraction
     span_match_notes: Optional[str] = None  # Notes about span matching
     match_type: Optional[str] = None  # Normalized match type (mirrors span_match_notes when available)
+    strategy: Optional[str] = None  # Ingestion strategy that generated this event
 
 
 class TimelineStats(BaseModel):
@@ -346,9 +347,11 @@ def get_events(
                     (SELECT id, title, description, start_year, start_month, start_day,
                             end_year, end_month, end_day,
                             is_bc_start, is_bc_end, weight, precision, category, wikipedia_url,
+                            s.name as strategy,
                             %s as bin_num,
                             ROW_NUMBER() OVER (ORDER BY weight DESC, id) as rank_in_bin
-                     FROM historical_events
+                     FROM historical_events he
+                     LEFT JOIN strategies s ON he.strategy_id = s.id
                      WHERE weight IS NOT NULL
                        AND start_year IS NOT NULL
                        AND end_year IS NOT NULL
@@ -386,7 +389,7 @@ def get_events(
             query = f"""
                 SELECT DISTINCT ON (id) id, title, description, start_year, start_month, start_day,
                        end_year, end_month, end_day,
-                       is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
+                       is_bc_start, is_bc_end, weight, precision, category, wikipedia_url, strategy
                 FROM ({query}) AS all_bins
                 ORDER BY id, rank_in_bin, bin_num
                 LIMIT %s
@@ -396,10 +399,11 @@ def get_events(
         else:
             # Legacy mode: no viewport, just filter by start/end year and category.
             query = """
-                SELECT id, title, description, start_year, start_month, start_day,
-                       end_year, end_month, end_day,
-                       is_bc_start, is_bc_end, weight, precision, category, wikipedia_url
-                FROM historical_events 
+                SELECT he.id, he.title, he.description, he.start_year, he.start_month, he.start_day,
+                       he.end_year, he.end_month, he.end_day,
+                       he.is_bc_start, he.is_bc_end, he.weight, he.precision, he.category, he.wikipedia_url, s.name as strategy
+                FROM historical_events he
+                LEFT JOIN strategies s ON he.strategy_id = s.id
                 WHERE 1=1
             """
             params = []
@@ -531,18 +535,20 @@ def get_events_by_bins(
             # Filter out events with weight > 2x viewport_span (too long for current zoom level)
             max_weight = viewport_span * 2 * 365
             subquery = """
-                (SELECT id, title, description, start_year, start_month, start_day,
-                        end_year, end_month, end_day,
-                        is_bc_start, is_bc_end, weight, precision, category, wikipedia_url,
+                (SELECT he.id, he.title, he.description, he.start_year, he.start_month, he.start_day,
+                        he.end_year, he.end_month, he.end_day,
+                        he.is_bc_start, he.is_bc_end, he.weight, he.precision, he.category, he.wikipedia_url,
+                        s.name as strategy,
                         %s as bin_num,
-                        ROW_NUMBER() OVER (ORDER BY weight DESC, id) as rank_in_bin
-                 FROM historical_events
-                 WHERE weight IS NOT NULL
-                   AND start_year IS NOT NULL
-                   AND end_year IS NOT NULL
-                   AND weight <= %s
-                   AND to_fractional_year(start_year, is_bc_start, start_month, start_day) <= %s
-                   AND to_fractional_year(end_year, is_bc_end, end_month, end_day) >= %s
+                        ROW_NUMBER() OVER (ORDER BY he.weight DESC, he.id) as rank_in_bin
+                 FROM historical_events he
+                 LEFT JOIN strategies s ON he.strategy_id = s.id
+                 WHERE he.weight IS NOT NULL
+                   AND he.start_year IS NOT NULL
+                   AND he.end_year IS NOT NULL
+                   AND he.weight <= %s
+                   AND to_fractional_year(he.start_year, he.is_bc_start, he.start_month, he.start_day) <= %s
+                   AND to_fractional_year(he.end_year, he.is_bc_end, he.end_month, he.end_day) >= %s
             """
             params.extend([bin_num, max_weight, bin_end, bin_start])
             
@@ -551,8 +557,8 @@ def get_events_by_bins(
             if category and len(category) > 0:
                 placeholders = ','.join(['%s'] * len(category))
                 subquery += f"""
-                   AND (category IN ({placeholders})
-                        OR event_key IN (
+                   AND (he.category IN ({placeholders})
+                        OR he.event_key IN (
                             SELECT event_key FROM event_categories 
                             WHERE category IN ({placeholders})
                         ))
@@ -560,7 +566,7 @@ def get_events_by_bins(
                 params.extend(category)
                 params.extend(category)
             
-            subquery += " ORDER BY weight DESC, id LIMIT %s)"
+            subquery += " ORDER BY he.weight DESC, he.id LIMIT %s)"
             params.append(limit)
             
             query_parts.append(subquery)
@@ -570,7 +576,7 @@ def get_events_by_bins(
         query = f"""
             SELECT id, title, description, start_year, start_month, start_day,
                    end_year, end_month, end_day,
-                   is_bc_start, is_bc_end, weight, precision, category, wikipedia_url, bin_num
+                   is_bc_start, is_bc_end, weight, precision, category, wikipedia_url, strategy, bin_num
             FROM ({query}) AS zone_bins
             ORDER BY bin_num, rank_in_bin
         """
