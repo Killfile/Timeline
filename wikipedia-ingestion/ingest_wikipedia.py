@@ -14,13 +14,18 @@ Implementation lives in:
 from __future__ import annotations
 
 import os
+import sys
+
+# Ensure /app is in sys.path for imports
+sys.path.insert(0, '/app')
 
 # Support BOTH:
 # - `python -u ingest_wikipedia.py` (script execution inside container)
 # - `python -m wikipedia_ingestion.ingest_wikipedia` (package-style)
 try:
     from .ingestion_common import log_error, log_info
-
+    from .strategies.ingestion_strategy_factory import IngestionStrategyFactory, IngestionStrategies
+    from .strategies.strategy_base import IngestionStrategy
     # Test helper re-exports (used by tests importing from ingest_wikipedia)
     # ingestion_list_of_years.py has been consolidated into strategies/list_of_years/list_of_years_strategy.py
     # Legacy helper for backward compatibility
@@ -28,7 +33,8 @@ try:
     
 except ImportError:  # pragma: no cover
     from ingestion_common import log_error, log_info
-
+    from strategies.ingestion_strategy_factory import IngestionStrategyFactory, IngestionStrategies
+    from strategies.strategy_base import IngestionStrategy
     # Test helper re-exports
     # ingestion_list_of_years.py has been consolidated into strategies/list_of_years/list_of_years_strategy.py
     # Legacy helper for backward compatibility
@@ -84,15 +90,9 @@ def ingest() -> None:
     # Run each strategy
     artifact_count = 0
     for strategy_name in strategy_names:
-        if strategy_name in {"list_of_years", "years"}:
-            strategy_obj = ListOfYearsStrategy(RUN_ID, output_dir)
-        elif strategy_name in {"bespoke_events", "bespoke"}:
-            strategy_obj = BespokeEventsStrategy(RUN_ID, output_dir)
-        elif strategy_name in {"time_periods", "periods"}:
-            strategy_obj = ListOfTimePeriodsStrategy(RUN_ID, output_dir)
-        else:
-            log_error(f"Unknown strategy: {strategy_name}")
-            continue
+        strategy_obj = IngestionStrategyFactory.get_strategy(
+            IngestionStrategies[strategy_name.upper()], RUN_ID, output_dir
+        )
         
         try:
             log_info(f"=== Running strategy: {strategy_obj.name()} ===")
@@ -106,17 +106,8 @@ def ingest() -> None:
             filename = artifact_data.suggested_filename or f"events_{artifact_data.strategy_name}_{artifact_data.run_id}.json"
             artifact_path = output_dir / filename
             
-            artifact_dict = {
-                "strategy": artifact_data.strategy_name,
-                "run_id": artifact_data.run_id,
-                "generated_at_utc": artifact_data.generated_at_utc,
-                "event_count": artifact_data.event_count,
-                "metadata": artifact_data.metadata,
-                "events": [event.to_dict() for event in artifact_data.events]
-            }
-            
             with open(artifact_path, "w", encoding="utf-8") as f:
-                json.dump(artifact_dict, f, indent=2, ensure_ascii=False, cls=SpanEncoder)
+                json.dump(artifact_data.to_dict(), f, indent=2, ensure_ascii=False, cls=SpanEncoder)
                 f.write("\n")
             
             log_info(f"Wrote artifact: {artifact_path}")

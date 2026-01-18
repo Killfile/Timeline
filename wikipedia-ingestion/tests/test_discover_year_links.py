@@ -1,11 +1,11 @@
 """Test the URL pattern matching for year page discovery."""
 
 import pytest
-from strategies.list_of_years.list_of_years_strategy import _discover_yearish_links_from_list_of_years
+from strategies.list_of_years.list_of_years_strategy import ListOfYearsStrategy
 
 
 class TestDiscoverYearishLinks:
-    """Tests for _discover_yearish_links_from_list_of_years function."""
+    """Tests for ListOfYearsStrategy._discover_yearish_links_from_list_of_years function."""
 
     def test_discovers_ad_prefix_format(self):
         """Should discover year pages with AD_ prefix format (e.g., /wiki/AD_100)."""
@@ -17,7 +17,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=None)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None)
         assert len(result) == 2
         assert result[0]["title"] == "AD 100"
         assert result[0]["url"] == "https://en.wikipedia.org/wiki/AD_100"
@@ -36,7 +36,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=None)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None)
         assert len(result) == 3
         assert result[0]["title"] == "AD 504"
         assert result[0]["url"] == "https://en.wikipedia.org/wiki/504"
@@ -55,7 +55,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=None)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None)
         assert len(result) == 2
         assert result[0]["title"] == "10 BC"
         assert result[0]["url"] == "https://en.wikipedia.org/wiki/10_BC"
@@ -75,7 +75,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=None)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None)
         assert len(result) == 5
         years = [r["scope"]["start_year"] for r in result]
         assert 10 in years  # BC
@@ -96,7 +96,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=None)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None)
         assert len(result) == 1
         assert result[0]["title"] == "AD 500"
 
@@ -111,7 +111,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=None)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None)
         assert len(result) == 2
         assert result[0]["scope"]["start_year"] == 500
         assert result[1]["scope"]["start_year"] == 100
@@ -129,7 +129,7 @@ class TestDiscoverYearishLinks:
             </body>
         </html>
         '''
-        result = _discover_yearish_links_from_list_of_years(html, limit=3)
+        result = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=3)
         assert len(result) == 3
 
 

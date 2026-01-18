@@ -19,25 +19,18 @@ from datetime import datetime
 from pathlib import Path
 
 # Support both module and script imports
-try:
-    from .ingestion_common import log_error, log_info
-    from .strategy_base import (
-        ArtifactData,
-        FetchResult,
-        HistoricalEvent,
-        IngestionStrategy,
-        ParseResult,
-    )
-except ImportError:  # pragma: no cover
-    from ingestion_common import log_error, log_info
-    from strategy_base import (
-        ArtifactData,
-        FetchResult,
-        HistoricalEvent,
-        IngestionStrategy,
-        ParseResult,
-    )
 
+from ingestion_common import log_error, log_info
+
+from historical_event import HistoricalEvent
+
+# Import result types for type hints
+from strategies.strategy_base import (
+    ArtifactData,
+    FetchResult,
+    IngestionStrategy,
+    ParseResult,
+)
 
 # Template with example bespoke events
 TEMPLATE_EVENTS = [

@@ -28,40 +28,22 @@ from typing import Any
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-try:
-    from ..event_schema import CanonicalEvent
-    from ..ingestion_common import (
-        LOGS_DIR,
-        _get_html,
-        log_error,
-        log_info,
-    )
-    from ..span_parsing.span import Span, SpanEncoder, SpanPrecision
-    from ..span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
-    from ..strategy_base import (
-        ArtifactData,
-        FetchResult,
-        HistoricalEvent,
-        IngestionStrategy,
-        ParseResult,
-    )
-except ImportError:
-    from event_schema import CanonicalEvent
-    from ingestion_common import (
-        LOGS_DIR,
-        get_html,
-        log_error,
-        log_info,
-    )
-    from span_parsing.span import Span, SpanEncoder, SpanPrecision
-    from span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
-    from strategy_base import (
-        ArtifactData,
-        FetchResult,
-        HistoricalEvent,
-        IngestionStrategy,
-        ParseResult,
-    )
+
+from ingestion_common import (
+    LOGS_DIR,
+    get_html,
+    log_error,
+    log_info,
+)
+from span_parsing.span import Span, SpanEncoder, SpanPrecision
+from span_parsing.orchestrators.parse_orchestrator_factory import ParseOrchestratorFactory, ParseOrchestratorTypes
+from strategies.strategy_base import (
+    ArtifactData,
+    FetchResult,
+    IngestionStrategy,
+    ParseResult,
+)
+from historical_event import HistoricalEvent
 
 
 # Constants
@@ -81,7 +63,7 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
     """Strategy for ingesting from Wikipedia's List of Time Periods page."""
 
     def name(self) -> str:
-        return "list_of_time_periods"
+        return "Major Time Periods"
 
     def fetch(self) -> FetchResult:
         """Fetch the List of Time Periods page.

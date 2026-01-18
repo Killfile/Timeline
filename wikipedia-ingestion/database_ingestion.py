@@ -84,7 +84,36 @@ def clear_previously_ingested(conn) -> None:
         cur.close()
 
 
-def insert_event(conn, event: dict, category: str | None):
+def get_or_create_strategy(conn, strategy_name: str) -> int:
+    """Get or create a strategy record and return its ID."""
+    _require_psycopg2()
+    cur = conn.cursor()
+    try:
+        # First try to get existing strategy
+        cur.execute("SELECT id FROM strategies WHERE name = %s", (strategy_name,))
+        result = cur.fetchone()
+        if result:
+            return result[0]
+        
+        # If not found, create it
+        cur.execute(
+            "INSERT INTO strategies (name) VALUES (%s) RETURNING id",
+            (strategy_name,)
+        )
+        result = cur.fetchone()
+        if result:
+            conn.commit()
+            return result[0]
+        else:
+            raise RuntimeError(f"Failed to create strategy: {strategy_name}")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+
+
+def insert_event(conn, event: dict, category: str | None, strategy_id: int | None = None):
     """Insert an event into the database.
 
     The event dict should include a 'weight' field with the pre-computed weight in days.
@@ -112,8 +141,8 @@ def insert_event(conn, event: dict, category: str | None):
         INSERT INTO {INGEST_TARGET_TABLE}
             (event_key, title, description, start_year, start_month, start_day, 
              end_year, end_month, end_day, 
-             is_bc_start, is_bc_end, weight, precision, category, wikipedia_url)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             is_bc_start, is_bc_end, weight, precision, category, wikipedia_url, strategy_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT ON CONSTRAINT uq_historical_events_identity DO NOTHING
         RETURNING id
     """
@@ -134,6 +163,7 @@ def insert_event(conn, event: dict, category: str | None):
         event.get("precision"),
         category,
         event.get("url"),
+        strategy_id,
     )
 
     if not hasattr(insert_event, "_seen_first_db_error"):

@@ -47,6 +47,7 @@ services:
     container_name: timeline-wikipedia-ingestion
     environment:
       PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app
       DB_HOST: database
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-timeline_history}

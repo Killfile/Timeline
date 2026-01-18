@@ -41,9 +41,10 @@ try:
     from .database_ingestion import (
         clear_previously_ingested,
         connect_db,
+        get_or_create_strategy,
         insert_event,
     )
-    from .strategy_base import validate_event_dict
+    from .strategies.strategy_base import validate_event_dict
 except ImportError:  # pragma: no cover
     from ingestion_common import (
         log_error,
@@ -52,9 +53,10 @@ except ImportError:  # pragma: no cover
     from database_ingestion import (
         clear_previously_ingested,
         connect_db,
+        get_or_create_strategy,
         insert_event,
     )
-    from strategy_base import validate_event_dict
+    from strategies.strategy_base import validate_event_dict
 
 
 def discover_artifact_files(artifact_dir: Path, pattern: str = "events_*.json") -> list[Path]:
@@ -211,6 +213,9 @@ def collect_all_events(artifacts: list[dict], errors: list[dict]) -> tuple[list[
                 strategy_invalid += 1
                 continue
             
+            # Add strategy to event for database insertion
+            event["strategy"] = strategy
+            
             all_events.append(event)
             stats["valid_events"] += 1
             strategy_valid += 1
@@ -339,10 +344,14 @@ def insert_events_to_db(conn, events: list[dict], errors: list[dict]) -> tuple[i
     
     for i, event in enumerate(events):
         try:
-            # Extract category before inserting (insert_event expects it as separate param)
+            # Extract strategy and category before inserting
+            strategy_name = event.pop("strategy", "unknown")
             category_value = event.pop("category", None)
             
-            if insert_event(conn, event, category=category_value):
+            # Get or create strategy ID
+            strategy_id = get_or_create_strategy(conn, strategy_name)
+            
+            if insert_event(conn, event, category=category_value, strategy_id=strategy_id):
                 inserted_count += 1
             else:
                 error_detail = {

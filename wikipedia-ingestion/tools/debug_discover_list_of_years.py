@@ -16,13 +16,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ingest_wikipedia as ingest  # noqa: E402
+from strategies.list_of_years.list_of_years_strategy import ListOfYearsStrategy  # noqa: E402
 
 
 def main() -> None:
     min_year_str = os.getenv("WIKI_MIN_YEAR")
     max_year_str = os.getenv("WIKI_MAX_YEAR")
-    min_year = ingest._parse_year(min_year_str)
-    max_year = ingest._parse_year(max_year_str)
+    min_year = ListOfYearsStrategy._parse_year(min_year_str)
+    max_year = ListOfYearsStrategy._parse_year(max_year_str)
     
     res = ingest._get_html(ingest.LIST_OF_YEARS_URL, context="debug_list_of_years")
     if not res:
@@ -30,14 +31,14 @@ def main() -> None:
         return
     html, _ = res
 
-    pages = ingest._discover_yearish_links_from_list_of_years(html, limit=None, min_year=min_year, max_year=max_year)
+    pages = ListOfYearsStrategy._discover_yearish_links_from_list_of_years(html, limit=None, min_year=min_year, max_year=max_year)
     print(f"Discovered total yearish pages: {len(pages)}")
 
     # Filter by min/max year if specified
     if min_year or max_year:
         filtered_pages = [
             p for p in pages
-            if ingest._should_include_page(
+            if ListOfYearsStrategy._should_include_page(
                 p.get("scope", {}).get("start_year", 0),
                 p.get("scope", {}).get("is_bc", False),
                 min_year,

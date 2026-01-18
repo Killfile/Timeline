@@ -4,6 +4,7 @@ WORKDIR /app
 
 # Make Python logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Install dependencies
 COPY requirements.txt .

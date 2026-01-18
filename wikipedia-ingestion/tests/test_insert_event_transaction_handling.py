@@ -1,4 +1,4 @@
-import ingestion_common as ingestion_common_library
+import database_ingestion
 
 
 class _FakeConn:
@@ -45,8 +45,7 @@ class _FakeCursor:
 
 def test_insert_event_rolls_back_then_allows_next_insert(monkeypatch):
     # Ensure we don't require real psycopg2 in this unit test.
-    monkeypatch.setattr(ingestion_common_library, "_require_psycopg2", lambda: None)
-
+   
     fake_cursor = _FakeCursor()
     fake_cursor.queue_fetchone((123,))
     fake_conn = _FakeConn(fake_cursor)
@@ -64,18 +63,17 @@ def test_insert_event_rolls_back_then_allows_next_insert(monkeypatch):
     }
 
     # First insert fails (boom) and must rollback.
-    assert ingestion_common_library.insert_event(fake_conn, event, category="year") is False
+    assert database_ingestion.insert_event(fake_conn, event, category="year") is False
     # insert_event does a defensive rollback at start plus one on error.
     assert fake_conn.rollbacks == 2
 
     # Second insert should succeed, proving we don't remain in a poisoned state.
-    assert ingestion_common_library.insert_event(fake_conn, event, category="year") is True
+    assert database_ingestion.insert_event(fake_conn, event, category="year") is True
 
 
 def test_insert_event_includes_weight_days(monkeypatch):
     """Weight should be pre-computed and included in inserts."""
-    monkeypatch.setattr(ingestion_common_library, "_require_psycopg2", lambda: None)
-
+    
     fake_cursor = _FakeCursor()
     # For this test, no error on first execute.
     fake_cursor._raise_first = False
@@ -95,7 +93,7 @@ def test_insert_event_includes_weight_days(monkeypatch):
         "_debug_extraction": {"method": "test", "matches": [], "snippet": "x"},
     }
 
-    assert ingestion_common_library.insert_event(fake_conn, event, category="year") is True
+    assert database_ingestion.insert_event(fake_conn, event, category="year") is True
 
     # First execute call should be historical_events insert.
     first_sql, first_params = fake_cursor.execute_calls[0]
