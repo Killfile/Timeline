@@ -279,6 +279,7 @@ def get_events(
     start_year: Optional[int] = Query(None, description="Filter events starting from this year"),
     end_year: Optional[int] = Query(None, description="Filter events up to this year"),
     category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
+    strategy: Optional[List[str]] = Query(None, description="Filter by strategies (can specify multiple)"),
     viewport_start: Optional[int] = Query(None, description="Viewport start year (for weight-based filtering)"),
     viewport_end: Optional[int] = Query(None, description="Viewport end year (for weight-based filtering)"),
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
@@ -295,6 +296,7 @@ def get_events(
     4. Returns top `limit` highest-weight events in viewport
     
     The category parameter can be specified multiple times to filter by multiple categories.
+    The strategy parameter can be specified multiple times to filter by multiple strategies.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -377,6 +379,12 @@ def get_events(
                     params.extend(category)
                     params.extend(category)
                 
+                # Handle multiple strategies
+                if strategy and len(strategy) > 0:
+                    placeholders = ','.join(['%s'] * len(strategy))
+                    subquery += f" AND s.name IN ({placeholders})"
+                    params.extend(strategy)
+                
                 subquery += " ORDER BY weight DESC, id LIMIT %s)"
                 params.append(events_per_bin)
                 
@@ -431,6 +439,12 @@ def get_events(
                 params.extend(category)
                 params.extend(category)
             
+            # Handle multiple strategies
+            if strategy and len(strategy) > 0:
+                placeholders = ','.join(['%s'] * len(strategy))
+                query += f" AND s.name IN ({placeholders})"
+                params.extend(strategy)
+            
             query += " ORDER BY start_year ASC NULLS LAST, end_year ASC NULLS LAST"
             query += " LIMIT %s OFFSET %s"
             params.extend([limit, offset])
@@ -474,6 +488,7 @@ def get_events_by_bins(
     viewport_span: float = Query(..., description="Span of viewport in years"),
     zone: str = Query(..., description="Which zone to load: 'left', 'center', or 'right'"),
     category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
+    strategy: Optional[List[str]] = Query(None, description="Filter by strategies (can specify multiple)"),
     limit: int = Query(100, ge=1, le=1000, description="Number of events to return per bin")
 ):
     """
@@ -491,6 +506,7 @@ def get_events_by_bins(
         viewport_span: Width of the visible viewport in years
         zone: Which 5-bin zone to load ('left', 'center', or 'right')
         category: Optional list of categories to filter by
+        strategy: Optional list of strategies to filter by
         limit: Max events per bin
     
     Returns:
@@ -565,6 +581,12 @@ def get_events_by_bins(
                 """
                 params.extend(category)
                 params.extend(category)
+            
+            # Handle multiple strategies
+            if strategy and len(strategy) > 0:
+                placeholders = ','.join(['%s'] * len(strategy))
+                subquery += f" AND s.name IN ({placeholders})"
+                params.extend(strategy)
             
             subquery += " ORDER BY he.weight DESC, he.id LIMIT %s)"
             params.append(limit)
@@ -857,6 +879,119 @@ def get_categories():
         conn.close()
 
 
+@app.get("/strategies")
+def get_strategies():
+    """Get list of all strategies used for data ingestion.
+    
+    Returns a list of strategies with their IDs, names, and event counts.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT 
+                s.id,
+                s.name,
+                COUNT(he.id) as event_count
+            FROM strategies s
+            LEFT JOIN historical_events he ON he.strategy_id = s.id
+            GROUP BY s.id, s.name
+            ORDER BY event_count DESC, s.name
+        """)
+        strategies = cursor.fetchall()
+        return {"strategies": strategies}
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/events/count")
+def get_events_count(
+    viewport_start: Optional[int] = Query(None, description="Viewport start year (absolute value)"),
+    viewport_end: Optional[int] = Query(None, description="Viewport end year (absolute value)"),
+    viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
+    viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
+    category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
+    strategy: Optional[List[str]] = Query(None, description="Filter by strategies (can specify multiple)")
+):
+    """Get count of events in a viewport with optional filters."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Convert viewport params to fractional years for range calculation
+        if viewport_start is not None and viewport_end is not None and viewport_is_bc_start is not None and viewport_is_bc_end is not None:
+            vs = -viewport_start if viewport_is_bc_start else viewport_start
+            ve = -viewport_end if viewport_is_bc_end else viewport_end
+            vmin, vmax = min(vs, ve), max(vs, ve)
+            
+            # Count events that overlap with the viewport
+            query = """
+                SELECT COUNT(DISTINCT he.id) as count
+                FROM historical_events he
+                LEFT JOIN strategies s ON he.strategy_id = s.id
+                WHERE to_fractional_year(he.start_year, he.is_bc_start, he.start_month, he.start_day) <= %s
+                  AND to_fractional_year(he.end_year, he.is_bc_end, he.end_month, he.end_day) >= %s
+            """
+            params = [vmax, vmin]
+            
+            # Handle multiple categories
+            if category and len(category) > 0:
+                placeholders = ','.join(['%s'] * len(category))
+                query += f"""
+                   AND (he.category IN ({placeholders})
+                        OR he.event_key IN (
+                            SELECT event_key FROM event_categories 
+                            WHERE category IN ({placeholders})
+                        ))
+                """
+                params.extend(category)
+                params.extend(category)
+            
+            # Handle multiple strategies
+            if strategy and len(strategy) > 0:
+                placeholders = ','.join(['%s'] * len(strategy))
+                query += f" AND s.name IN ({placeholders})"
+                params.extend(strategy)
+            
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return {"count": result['count']}
+        else:
+            # No viewport specified, return total count
+            query = "SELECT COUNT(*) as count FROM historical_events he LEFT JOIN strategies s ON he.strategy_id = s.id WHERE 1=1"
+            params = []
+            
+            # Handle multiple categories
+            if category and len(category) > 0:
+                placeholders = ','.join(['%s'] * len(category))
+                query += f"""
+                   AND (he.category IN ({placeholders})
+                        OR he.event_key IN (
+                            SELECT event_key FROM event_categories 
+                            WHERE category IN ({placeholders})
+                        ))
+                """
+                params.extend(category)
+                params.extend(category)
+            
+            # Handle multiple strategies
+            if strategy and len(strategy) > 0:
+                placeholders = ','.join(['%s'] * len(strategy))
+                query += f" AND s.name IN ({placeholders})"
+                params.extend(strategy)
+            
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return {"count": result['count']}
+    
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/search", response_model=List[HistoricalEvent])
 def search_events(
     q: str = Query(..., min_length=3, description="Search query"),
@@ -868,11 +1003,13 @@ def search_events(
     
     try:
         cursor.execute("""
-            SELECT id, title, description, start_year, end_year,
-                   is_bc_start, is_bc_end, category, wikipedia_url
-            FROM historical_events
-            WHERE to_tsvector('english', title || ' ' || COALESCE(description, '')) @@ plainto_tsquery('english', %s)
-            ORDER BY start_year ASC NULLS LAST
+            SELECT he.id, he.title, he.description, he.start_year, he.end_year,
+                   he.is_bc_start, he.is_bc_end, he.category, he.wikipedia_url,
+                   s.name as strategy
+            FROM historical_events he
+            LEFT JOIN strategies s ON he.strategy_id = s.id
+            WHERE to_tsvector('english', he.title || ' ' || COALESCE(he.description, '')) @@ plainto_tsquery('english', %s)
+            ORDER BY he.start_year ASC NULLS LAST
             LIMIT %s
         """, (q, limit))
         

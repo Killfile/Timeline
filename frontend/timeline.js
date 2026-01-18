@@ -359,6 +359,7 @@ async function loadThreeZones(startYear, endYear, skipCenter = false) {
         
         // Get selected categories from orchestrator
         const selectedCategories = window.timelineOrchestrator.getSelectedCategories();
+        const selectedElements = window.timelineOrchestrator.getSelectedElements();
         
         console.log(`[Timeline] ========================================`);
         console.log(`[Timeline] DEBUG: Loading zones`);
@@ -375,6 +376,7 @@ async function loadThreeZones(startYear, endYear, skipCenter = false) {
             viewportSpan: binConfig.viewportSpan,
             zone: 'left',
             categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+            elements: selectedElements.length > 0 ? selectedElements : undefined,
             limit: 100
         }));
         zoneNames.push('left');
@@ -386,6 +388,7 @@ async function loadThreeZones(startYear, endYear, skipCenter = false) {
                 viewportSpan: binConfig.viewportSpan,
                 zone: 'center',
                 categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+                elements: selectedElements.length > 0 ? selectedElements : undefined,
                 limit: 100
             }));
             zoneNames.push('center');
@@ -397,6 +400,7 @@ async function loadThreeZones(startYear, endYear, skipCenter = false) {
             viewportSpan: binConfig.viewportSpan,
             zone: 'right',
             categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+            elements: selectedElements.length > 0 ? selectedElements : undefined,
             limit: 100
         }));
         zoneNames.push('right');
@@ -458,7 +462,8 @@ async function loadThreeZones(startYear, endYear, skipCenter = false) {
             viewportEnd: Math.round(Math.abs(viewportEndYear)),
             isStartBC: viewportStartYear < 0,
             isEndBC: viewportEndYear < 0,
-            categories: selectedCategories.length > 0 ? selectedCategories : undefined
+            categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+            elements: selectedElements.length > 0 ? selectedElements : undefined
         };
         
         console.log(`[Timeline] DEBUG: Updating viewport count with params:`, countParams);
@@ -706,6 +711,15 @@ function initializeTimeline() {
     window.timelineOrchestrator.subscribe('categoriesFilterChanged', (selectedCategories) => {
         console.log('[Timeline] Category filter changed event received!');
         console.log('[Timeline] Selected categories:', selectedCategories);
+        console.log('[Timeline] Reloading events for current viewport');
+        const currentDomain = currentTransform.rescaleX(xScale).domain();
+        reloadViewportEvents(currentDomain[0], currentDomain[1]);
+    });
+    
+    // Subscribe to elements filter changes
+    window.timelineOrchestrator.subscribe('elementsFilterChanged', (selectedElements) => {
+        console.log('[Timeline] Elements filter changed event received!');
+        console.log('[Timeline] Selected elements:', selectedElements);
         console.log('[Timeline] Reloading events for current viewport');
         const currentDomain = currentTransform.rescaleX(xScale).domain();
         reloadViewportEvents(currentDomain[0], currentDomain[1]);

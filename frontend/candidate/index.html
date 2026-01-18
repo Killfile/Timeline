@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Candidate 1: Pulsing Glow Search Highlight</title>
+    <title>Timeline Candidate</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -28,7 +28,7 @@
                 <button class="fab-item" id="fab-reset" title="Reset to Full Timeline">
                     <span class="fab-icon">🏠</span>
                 </button>
-                <button class="fab-item" id="fab-filter" title="Category Filter">
+                <button class="fab-item" id="fab-filter" title="Timeline Elements Filter">
                     <span class="fab-icon">🏷️</span>
                 </button>
                 <button class="fab-item" id="fab-search" title="Search Events">
@@ -37,14 +37,14 @@
             </div>
         <div class="filter-panel" id="filter-panel">
             <div class="filter-header">
-                <h3>Filter by Category</h3>
+                <h3>Filter by Timeline Elements</h3>
                 <button class="filter-close" id="filter-close">×</button>
             </div>
             <div class="filter-search">
-                <input type="text" id="category-search" placeholder="Search categories..." />
+                <input type="text" id="element-search" placeholder="Search timeline elements..." />
             </div>
             <div class="filter-content" id="filter-content">
-                <!-- Categories will be populated dynamically -->
+                <!-- Elements will be populated dynamically -->
             </div>
         </div>
 

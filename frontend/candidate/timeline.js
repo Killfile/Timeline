@@ -23,11 +23,11 @@ class TimelineRenderer {
         this.searchInput = document.getElementById('search-input');
         this.searchResults = document.getElementById('search-results');
 
-        // Category filtering
-        this.activeCategories = new Set();
-        this.allCategories = new Set();
-        this.allCategoryData = []; // Store full category data from API
-        this.categorySearchInput = document.getElementById('category-search');
+        // Element filtering (strategies)
+        this.activeElements = new Set();
+        this.allElements = new Set();
+        this.allElementData = []; // Store full element data from API
+        this.elementSearchInput = document.getElementById('element-search');
         this.filteredEvents = null; // null means no filtering active
 
         // Viewport-aware loading system
@@ -106,27 +106,26 @@ class TimelineRenderer {
         this.animate();
     }
 
-    getColorForCategory(category) {
-        // Semantic coloring: map category keywords to brighter palette colors
-        const categoryLower = category.toLowerCase();
+    getColorForStrategy(strategy) {
+        // Semantic coloring: map strategy keywords to brighter palette colors
+        const strategyLower = (strategy || 'Unknown').toLowerCase();
         
         // Define semantic categories with | delimited keywords and assigned colors from original palette
         const semanticMappings = [
-            { keywords: 'war|battle|conflict|invasion|revolt|rebellion|defeat|conquest', color: '#fa709a' }, // Coral - conflict/aggression
-            { keywords: 'period|era|age|dynasty|epoch|century|millennium', color: '#61e5da' }, // Blue - time/history
-            { keywords: 'science|technology|invention|discovery|research|innovation', color: '#43e97b' }, // Green - growth/knowledge
-            { keywords: 'politics|government|election|revolution|policy|administration', color: '#ffa751' }, // Orange - energy/power
-            { keywords: 'religion|culture|art|literature|music|philosophy|tradition', color: '#f093fb' }, // Pink - creativity/spirituality
-            { keywords: 'economy|trade|commerce|finance|business|industry|market', color: '#fee140' }, // Yellow - wealth/prosperity
-            { keywords: 'exploration|geography|travel|colony|discovery|expedition|migration', color: '#00f2fe' }, // Cyan - adventure/discovery
-            { keywords: 'education|school|university|learning|teaching|academy', color: '#38f9d7' }, // Teal - knowledge/wisdom
-            { keywords: 'peace|treaty|diplomacy|alliance|negotiation|accord', color: '#4facfe' }, // Light blue - calm/cooperation
+            { keywords: 'wikipedia_list_of_years|wikipedia_list_of_centuries', color: '#61e5da' }, // Blue - time/history
+            { keywords: 'wikipedia_category_pages', color: '#43e97b' }, // Green - growth/knowledge
+            { keywords: 'wikipedia_featured_articles', color: '#ffa751' }, // Orange - energy/power
+            { keywords: 'wikipedia_current_events', color: '#f093fb' }, // Pink - creativity/spirituality
+            { keywords: 'wikipedia_portal_pages', color: '#fee140' }, // Yellow - wealth/prosperity
+            { keywords: 'wikipedia_timeline_pages', color: '#00f2fe' }, // Cyan - adventure/discovery
+            { keywords: 'wikipedia_biography_pages', color: '#38f9d7' }, // Teal - knowledge/wisdom
+            { keywords: 'wikipedia_event_pages', color: '#4facfe' }, // Light blue - calm/cooperation
         ];
         
         // Check each semantic category
         for (const mapping of semanticMappings) {
             const keywordList = mapping.keywords.split('|');
-            if (keywordList.some(keyword => categoryLower.includes(keyword.trim()))) {
+            if (keywordList.some(keyword => strategyLower.includes(keyword.trim()))) {
                 return mapping.color;
             }
         }
@@ -302,9 +301,9 @@ class TimelineRenderer {
             this.hideFilterPanel();
         });
 
-        // Category search input
-        this.categorySearchInput.addEventListener('input', (e) => {
-            this.filterCategories(e.target.value);
+        // Element search input
+        this.elementSearchInput.addEventListener('input', (e) => {
+            this.filterElements(e.target.value);
         });
 
         // Search Panel
@@ -415,7 +414,7 @@ class TimelineRenderer {
             }
             
             this.calculateBandPositions();
-            this.applyCategoryFilter();
+            this.applyElementFilter();
             return;
         }
 
@@ -440,9 +439,25 @@ class TimelineRenderer {
         const maxWeight = this.viewportSpan * strategy.weightMultiplier;
 
         try {
+            // Build query parameters
+            let queryParams = new URLSearchParams({
+                viewport_center: extendedCenter,
+                viewport_span: extendedSpan,
+                zone: 'center',
+                limit: strategy.limit,
+                max_weight: maxWeight
+            });
+
+            // Add strategy filtering if elements are selected
+            if (this.activeElements.size > 0) {
+                Array.from(this.activeElements).forEach(element => {
+                    queryParams.append('strategy', element);
+                });
+            }
+
             // Request events from extended viewport but with higher weight requirements
             const response = await fetch(
-                `${API_URL}/events/bins?viewport_center=${extendedCenter}&viewport_span=${extendedSpan}&zone=center&limit=${strategy.limit}&max_weight=${maxWeight}`
+                `${API_URL}/events/bins?${queryParams.toString()}`
             );
 
             if (response.ok) {
@@ -552,7 +567,7 @@ class TimelineRenderer {
                 this.eventCache.set(cacheKey, events);
                 this.events = events;
                 this.calculateBandPositions();
-                this.applyCategoryFilter();
+                this.applyElementFilter();
                 this.render();
 
                 // Clean up old cache entries if we exceed the limit
@@ -659,7 +674,7 @@ class TimelineRenderer {
             event.startYear = startYear;
             event.endYear = endYear;
             event.duration = duration;
-            event.color = this.getColorForCategory(event.categories && event.categories.length > 0 ? event.categories[0].category : 'Unknown');
+            event.color = this.getColorForStrategy(event.strategy);
             
             // Calculate visual bounds for collision detection
             this.calculateEventVisualBounds(event);
@@ -1526,18 +1541,10 @@ class TimelineRenderer {
                 <span class="event-detail-label">Band:</span>
                 <span class="event-detail-value">${event.band || 0}</span>
             </div>
-            ${event.categories && event.categories.length > 0 ? `
+            ${event.strategy ? `
             <div class="event-detail">
-                <span class="event-detail-label">Categories:</span>
-                <div class="event-detail-value">
-                    ${event.categories.map(cat => `
-                        <div class="category-item">
-                            <span class="category-name">${cat.category}</span>
-                            ${cat.llm_source ? `<span class="category-source ai-source">AI (${cat.llm_source})</span>` : '<span class="category-source wiki-source">Wikipedia</span>'}
-                            ${cat.confidence ? `<span class="category-confidence">${(cat.confidence * 100).toFixed(0)}% confidence</span>` : ''}
-                        </div>
-                    `).join('')}
-                </div>
+                <span class="event-detail-label">Timeline Element:</span>
+                <span class="event-detail-value">${event.strategy}</span>
             </div>
             ` : ''}
 
@@ -1594,8 +1601,8 @@ class TimelineRenderer {
 
     // FAB Control Methods
     showFilterPanel() {
-        this.categorySearchInput.value = '';
-        this.populateCategories();
+        this.elementSearchInput.value = '';
+        this.populateElements();
         this.filterPanel.classList.add('active');
     }
 
@@ -1614,51 +1621,49 @@ class TimelineRenderer {
         this.searchResults.innerHTML = '';
     }
 
-    populateCategories() {
-        // Fetch all categories from the API
-        fetch(`${API_URL}/categories`)
+    populateElements() {
+        // Fetch all strategies from the API
+        fetch(`${API_URL}/strategies`)
             .then(response => response.json())
             .then(data => {
-                this.allCategories.clear();
-                // Store categories with their metadata
-                this.allCategoryData = data.categories || [];
+                this.allElements.clear();
+                // Store strategies with their metadata
+                this.allElementData = data.strategies || [];
                 
-                // Extract category names for the Set
-                this.allCategoryData.forEach(catData => {
-                    this.allCategories.add(catData.category);
+                // Extract strategy names for the Set
+                this.allElementData.forEach(elementData => {
+                    this.allElements.add(elementData.name);
                 });
                 
-                this.renderCategoryList();
+                this.renderElementList();
             })
             .catch(error => {
-                console.error('Error fetching categories:', error);
+                console.error('Error fetching strategies:', error);
                 // Fallback to extracting from events if API fails
-                this.allCategories.clear();
+                this.allElements.clear();
                 this.events.forEach(event => {
-                    if (event.categories) {
-                        event.categories.forEach(cat => {
-                            this.allCategories.add(cat.category);
-                        });
+                    if (event.strategy) {
+                        this.allElements.add(event.strategy);
                     }
                 });
-                this.allCategoryData = Array.from(this.allCategories).map(cat => ({ category: cat, count: 0, has_llm_enrichment: false }));
-                this.renderCategoryList();
+                this.allElementData = Array.from(this.allElements).map(name => ({ id: null, name: name, event_count: 0 }));
+                this.renderElementList();
             });
     }
 
-    renderCategoryList(filteredCategories = null) {
-        const categoriesToShow = filteredCategories || this.allCategoryData;
+    renderElementList(filteredElements = null) {
+        const elementsToShow = filteredElements || this.allElementData;
         
-        // Sort categories: active ones first, then by count descending
-        const sortedCategories = categoriesToShow.sort((a, b) => {
-            const aActive = this.activeCategories.has(a.category);
-            const bActive = this.activeCategories.has(b.category);
+        // Sort elements: active ones first, then by event_count descending
+        const sortedElements = elementsToShow.sort((a, b) => {
+            const aActive = this.activeElements.has(a.name);
+            const bActive = this.activeElements.has(b.name);
             
             if (aActive && !bActive) return -1;
             if (!aActive && bActive) return 1;
             
-            // If both active or both inactive, sort by count descending
-            return b.count - a.count;
+            // If both active or both inactive, sort by event_count descending
+            return b.event_count - a.event_count;
         });
 
         const filterContent = document.getElementById('filter-content');
@@ -1668,37 +1673,36 @@ class TimelineRenderer {
         }
         filterContent.innerHTML = '';
 
-        if (sortedCategories.length === 0) {
-            filterContent.innerHTML = '<p>No categories found</p>';
+        if (sortedElements.length === 0) {
+            filterContent.innerHTML = '<p>No timeline elements found</p>';
             return;
         }
 
-        sortedCategories.forEach(catData => {
+        sortedElements.forEach(elementData => {
             const filterItem = document.createElement('div');
             filterItem.className = 'filter-item';
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
-            checkbox.id = `filter-${catData.category}`;
-            checkbox.checked = this.activeCategories.has(catData.category);
+            checkbox.id = `filter-${elementData.name}`;
+            checkbox.checked = this.activeElements.has(elementData.name);
 
             const label = document.createElement('label');
-            label.htmlFor = `filter-${catData.category}`;
+            label.htmlFor = `filter-${elementData.name}`;
             
-            // Show category name with count and LLM indicator
-            const countText = catData.count > 0 ? ` (${catData.count})` : '';
-            const llmIndicator = catData.has_llm_enrichment ? ' 🤖' : '';
-            label.textContent = catData.category + countText + llmIndicator;
+            // Show element name with count
+            const countText = elementData.event_count > 0 ? ` (${elementData.event_count})` : '';
+            label.textContent = elementData.name + countText;
 
             checkbox.addEventListener('change', () => {
                 if (checkbox.checked) {
-                    this.activeCategories.add(catData.category);
+                    this.activeElements.add(elementData.name);
                 } else {
-                    this.activeCategories.delete(catData.category);
+                    this.activeElements.delete(elementData.name);
                 }
-                this.applyCategoryFilter();
+                this.applyElementFilter();
                 // Re-render to maintain sorting
-                this.renderCategoryList(filteredCategories);
+                this.renderElementList(filteredElements);
             });
 
             filterItem.appendChild(checkbox);
@@ -1707,29 +1711,28 @@ class TimelineRenderer {
         });
     }
 
-    filterCategories(searchTerm) {
+    filterElements(searchTerm) {
         if (!searchTerm.trim()) {
-            // Show all categories when search is empty
-            this.renderCategoryList();
+            // Show all elements when search is empty
+            this.renderElementList();
             return;
         }
 
-        const filtered = this.allCategoryData.filter(catData =>
-            catData.category.toLowerCase().includes(searchTerm.toLowerCase())
+        const filtered = this.allElementData.filter(elementData =>
+            elementData.name.toLowerCase().includes(searchTerm.toLowerCase())
         );
         
-        this.renderCategoryList(filtered);
+        this.renderElementList(filtered);
     }
 
-    applyCategoryFilter() {
-        if (this.activeCategories.size === 0) {
+    applyElementFilter() {
+        if (this.activeElements.size === 0) {
             // Show all events
             this.filteredEvents = this.events;
         } else {
-            // Filter events that have at least one matching category
+            // Filter events that have at least one matching element (strategy)
             this.filteredEvents = this.events.filter(event => {
-                if (!event.categories) return false;
-                return event.categories.some(cat => this.activeCategories.has(cat.category));
+                return this.activeElements.has(event.strategy);
             });
         }
         this.scheduleRender();
@@ -1759,8 +1762,6 @@ class TimelineRenderer {
                     // Normalize API results to match frontend expected format
                     results = results.map(event => ({
                         ...event,
-                        // Convert single category to categories array
-                        categories: event.category ? [{ category: event.category }] : [],
                         // Ensure month/day fields exist (null is fine)
                         start_month: event.start_month || null,
                         start_day: event.start_day || null,
@@ -1768,7 +1769,8 @@ class TimelineRenderer {
                         end_day: event.end_day || null,
                         // Set defaults for missing fields
                         weight: event.weight || null,
-                        precision: event.precision || null
+                        precision: event.precision || null,
+                        strategy: event.strategy || null
                     }));
                 } else {
                     console.warn('API search failed, falling back to local search');

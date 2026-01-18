@@ -18,8 +18,8 @@
             <input type="text" id="search-input" placeholder="🔍 Search events..." title="Search historical events">
             
             <div class="category-filter-container">
-                <button id="category-filter-toggle" class="category-filter-toggle" title="Filter by categories">
-                    📂 Categories (<span id="selected-category-count">0</span>)
+                <button id="category-filter-toggle" class="category-filter-toggle" title="Filter by timeline elements">
+                    🎯 Timeline Elements (<span id="selected-category-count">0</span>)
                 </button>
                 <div id="category-filter-dropdown" class="category-filter-dropdown hidden">
                     <div class="category-filter-header">
@@ -29,7 +29,7 @@
                         </label>
                     </div>
                     <div id="category-filter-list" class="category-filter-list">
-                        <!-- Categories will be populated dynamically -->
+                        <!-- Elements will be populated dynamically -->
                     </div>
                 </div>
             </div>
@@ -90,7 +90,7 @@
                 <li><strong>Zoom:</strong> Scroll up/down to zoom in/out on the timeline</li>
                 <li><strong>Pan:</strong> Click and drag to move along the timeline</li>
                 <li><strong>Select Event:</strong> Click on any event marker to see details</li>
-                <li><strong>Filter:</strong> Use the category dropdown to filter events by type</li>
+                <li><strong>Filter:</strong> Use the timeline elements dropdown to filter events by data source</li>
                 <li><strong>Search:</strong> Search for specific events by keyword</li>
             </ul>
         </div>
@@ -101,7 +101,7 @@
     <script src="backend.js"></script>
     <script src="observability.js"></script>
     <script src="legend.js"></script>
-    <script src="categoryFilter.js"></script>
+    <script src="elementsFilter.js"></script>
     <script src="packing.js"></script>
     <script src="timeline.js"></script>
     <script src="app.js"></script>

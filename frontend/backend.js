@@ -22,6 +22,7 @@ class TimelineBackend {
      * @param {number} params.limit - Maximum events to return
      * @param {string} params.category - Optional single category filter (legacy)
      * @param {Array} params.categories - Optional array of categories to filter
+     * @param {Array} params.elements - Optional array of elements (strategies) to filter
      */
     async loadViewportEvents(params) {
         try {
@@ -44,6 +45,21 @@ class TimelineBackend {
                 });
             } else {
                 console.log('[Backend] Not filtering categories (all selected or none) - will include uncategorized events');
+            }
+            
+            // Handle multiple elements (strategies)
+            const shouldFilterElements = params.elements && 
+                                        Array.isArray(params.elements) && 
+                                        params.elements.length > 0;
+            
+            if (shouldFilterElements) {
+                // Add each element as a separate query parameter
+                console.log('[Backend] Filtering by', params.elements.length, 'elements');
+                params.elements.forEach(element => {
+                    url += `&strategy=${encodeURIComponent(element)}`;
+                });
+            } else {
+                console.log('[Backend] Not filtering elements (all selected or none)');
             }
             
             if (params.category) {
@@ -83,6 +99,7 @@ class TimelineBackend {
      * @param {number} params.viewportSpan - Width of the viewport in years
      * @param {string} params.zone - Which zone to load: 'left', 'center', or 'right'
      * @param {Array} params.categories - Optional array of categories to filter
+     * @param {Array} params.elements - Optional array of elements (strategies) to filter
      * @param {number} params.limit - Maximum events per bin (default 100)
      * @returns {Promise<Array>} Array of events with bin metadata
      */
@@ -104,6 +121,20 @@ class TimelineBackend {
                 });
             } else {
                 console.log(`[Backend] Loading ${params.zone} zone (all categories)`);
+            }
+            
+            // Handle elements (strategies) filtering
+            const shouldFilterElements = params.elements && 
+                                        Array.isArray(params.elements) && 
+                                        params.elements.length > 0;
+            
+            if (shouldFilterElements) {
+                console.log(`[Backend] Loading ${params.zone} zone with ${params.elements.length} element filters`);
+                params.elements.forEach(element => {
+                    url += `&strategy=${encodeURIComponent(element)}`;
+                });
+            } else {
+                console.log(`[Backend] Loading ${params.zone} zone (all elements)`);
             }
             
             const response = await fetch(url);
@@ -141,6 +172,17 @@ class TimelineBackend {
             if (shouldFilterCategories) {
                 params.categories.forEach(cat => {
                     url += `&category=${encodeURIComponent(cat)}`;
+                });
+            }
+            
+            // Handle elements (strategies) filtering
+            const shouldFilterElements = params.elements && 
+                                        Array.isArray(params.elements) && 
+                                        params.elements.length > 0;
+            
+            if (shouldFilterElements) {
+                params.elements.forEach(element => {
+                    url += `&strategy=${encodeURIComponent(element)}`;
                 });
             }
             

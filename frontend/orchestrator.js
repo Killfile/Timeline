@@ -14,6 +14,7 @@ class TimelineOrchestrator {
         this.availableLanes = 10; // Fixed number of visible lanes
         this.categoryColors = new Map(); // category -> color
         this.selectedCategories = []; // Array of selected category names (default: all)
+        this.selectedElements = []; // Array of selected element names (default: all)
         this.viewport = null; // Current viewport (startDate, endDate, transform)
         this.stats = {
             totalEvents: 0,
@@ -134,6 +135,18 @@ class TimelineOrchestrator {
     // Get selected categories
     getSelectedCategories() {
         return this.selectedCategories;
+    }
+    
+    // Set selected elements (from elements filter)
+    setSelectedElements(elements) {
+        this.selectedElements = elements;
+        console.log(`[Orchestrator] Selected elements updated: ${elements.length} selected`);
+        this.notify('elementsFilterChanged', elements);
+    }
+    
+    // Get selected elements
+    getSelectedElements() {
+        return this.selectedElements;
     }
     
     // Update stats

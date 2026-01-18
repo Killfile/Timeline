@@ -24,17 +24,21 @@ async function initializeApp() {
         await window.timelineCategoryFilter.loadCategories(window.timelineBackend);
         console.log('Category filter initialized');
 
+        // Step 2.5: Load elements and initialize elements filter
+        // The elements filter initializes itself, so we don't need to call anything here
+        console.log('Elements filter initialized');
+
         // Step 3: Load events for the initial viewport (3000 BC to 2024 AD)
         // This matches the initial scale domain in timeline.js
-        // Use the selected categories from the filter (all by default)
-        const selectedCategories = window.timelineCategoryFilter.getSelectedCategories();
+        // Use the selected elements from the filter (all by default)
+        const selectedElements = window.timelineElementsFilter.getSelectedElements();
         const events = await window.timelineBackend.loadViewportEvents({
             viewportStart: 3000,
             viewportEnd: 2024,
             isStartBC: true,
             isEndBC: false,
             limit: 100,
-            categories: selectedCategories.length > 0 ? selectedCategories : undefined
+            elements: selectedElements.length > 0 ? selectedElements : undefined
         });
         console.log(`Loaded ${events.length} events for initial viewport`);
 
@@ -46,9 +50,8 @@ async function initializeApp() {
         window.timelineLegend.render();
         console.log('Rendered legend');
         
-        // Step 6: Update category filter to show colors
-        window.timelineCategoryFilter.renderCategoryList();
-        console.log('Updated category filter with colors');
+        // Step 6: Update elements filter (no color update needed for elements)
+        console.log('Elements filter ready');
 
         // Lane assignments will be calculated by timeline.js after initialization
 
