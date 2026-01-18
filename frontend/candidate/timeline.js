@@ -106,26 +106,27 @@ class TimelineRenderer {
         this.animate();
     }
 
-    getColorForStrategy(strategy) {
-        // Semantic coloring: map strategy keywords to brighter palette colors
-        const strategyLower = (strategy || 'Unknown').toLowerCase();
+    getColorForCategory(category) {
+        // Semantic coloring: map category keywords to brighter palette colors
+        const categoryLower = category.toLowerCase();
         
         // Define semantic categories with | delimited keywords and assigned colors from original palette
         const semanticMappings = [
-            { keywords: 'wikipedia_list_of_years|wikipedia_list_of_centuries', color: '#61e5da' }, // Blue - time/history
-            { keywords: 'wikipedia_category_pages', color: '#43e97b' }, // Green - growth/knowledge
-            { keywords: 'wikipedia_featured_articles', color: '#ffa751' }, // Orange - energy/power
-            { keywords: 'wikipedia_current_events', color: '#f093fb' }, // Pink - creativity/spirituality
-            { keywords: 'wikipedia_portal_pages', color: '#fee140' }, // Yellow - wealth/prosperity
-            { keywords: 'wikipedia_timeline_pages', color: '#00f2fe' }, // Cyan - adventure/discovery
-            { keywords: 'wikipedia_biography_pages', color: '#38f9d7' }, // Teal - knowledge/wisdom
-            { keywords: 'wikipedia_event_pages', color: '#4facfe' }, // Light blue - calm/cooperation
+            { keywords: 'war|battle|conflict|invasion|revolt|rebellion|defeat|conquest', color: '#fa709a' }, // Coral - conflict/aggression
+            { keywords: 'period|era|age|dynasty|epoch|century|millennium', color: '#61e5da' }, // Blue - time/history
+            { keywords: 'science|technology|invention|discovery|research|innovation', color: '#43e97b' }, // Green - growth/knowledge
+            { keywords: 'politics|government|election|revolution|policy|administration', color: '#ffa751' }, // Orange - energy/power
+            { keywords: 'religion|culture|art|literature|music|philosophy|tradition', color: '#f093fb' }, // Pink - creativity/spirituality
+            { keywords: 'economy|trade|commerce|finance|business|industry|market', color: '#fee140' }, // Yellow - wealth/prosperity
+            { keywords: 'exploration|geography|travel|colony|discovery|expedition|migration', color: '#00f2fe' }, // Cyan - adventure/discovery
+            { keywords: 'education|school|university|learning|teaching|academy', color: '#38f9d7' }, // Teal - knowledge/wisdom
+            { keywords: 'peace|treaty|diplomacy|alliance|negotiation|accord', color: '#4facfe' }, // Light blue - calm/cooperation
         ];
         
         // Check each semantic category
         for (const mapping of semanticMappings) {
             const keywordList = mapping.keywords.split('|');
-            if (keywordList.some(keyword => strategyLower.includes(keyword.trim()))) {
+            if (keywordList.some(keyword => categoryLower.includes(keyword.trim()))) {
                 return mapping.color;
             }
         }
@@ -674,7 +675,7 @@ class TimelineRenderer {
             event.startYear = startYear;
             event.endYear = endYear;
             event.duration = duration;
-            event.color = this.getColorForStrategy(event.strategy);
+            event.color = this.getColorForCategory(event.categories && event.categories.length > 0 ? event.categories[0].category : 'Unknown');
             
             // Calculate visual bounds for collision detection
             this.calculateEventVisualBounds(event);
