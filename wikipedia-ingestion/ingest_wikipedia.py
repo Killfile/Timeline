@@ -42,13 +42,21 @@ except ImportError:  # pragma: no cover
    
 
 
-def ingest() -> None:
+def ingest(strategy_names: list[str] | None = None) -> None:
     """Run ingestion strategies to generate JSON artifacts.
     
     This function ONLY runs strategies to generate artifacts. It does NOT
     insert to the database. Use database_loader.py to load artifacts into the database.
     
-    Supports:
+    Args:
+        strategy_names: List of strategy names to run. If None, uses environment variables.
+    
+    Command-line usage:
+    - python ingest_wikipedia.py wars
+    - python ingest_wikipedia.py list_of_years bespoke_events
+    - python ingest_wikipedia.py all
+    
+    Environment variable usage (backward compatible):
     - WIKIPEDIA_INGEST_STRATEGY=list_of_years (default)
     - WIKIPEDIA_INGEST_STRATEGY=bespoke_events
     - WIKIPEDIA_INGEST_STRATEGY=time_periods
@@ -56,9 +64,25 @@ def ingest() -> None:
     - WIKIPEDIA_INGEST_STRATEGIES=list_of_years,bespoke_events,time_periods (explicit list)
     """
 
-    strategy = os.getenv("WIKIPEDIA_INGEST_STRATEGY", "list_of_years").strip().lower()
-    multi_strategies = os.getenv("WIKIPEDIA_INGEST_STRATEGIES", "").strip()
-
+    # Determine which strategies to run
+    if strategy_names is None:
+        # Use environment variables (backward compatibility)
+        strategy = os.getenv("WIKIPEDIA_INGEST_STRATEGY", "list_of_years").strip().lower()
+        multi_strategies = os.getenv("WIKIPEDIA_INGEST_STRATEGIES", "").strip()
+        
+        if multi_strategies:
+            # Explicit list from WIKIPEDIA_INGEST_STRATEGIES
+            strategy_names = [s.strip().lower() for s in multi_strategies.split(",")]
+        elif strategy == "all":
+            # "all" means all available strategies
+            strategy_names = ["list_of_years", "bespoke_events", "time_periods", "wars"]
+        else:
+            # Single strategy
+            strategy_names = [strategy]
+    else:
+        # Use provided strategy names
+        strategy_names = [s.strip().lower() for s in strategy_names]
+    
     # Lazy imports for new architecture
     try:
         from .strategies import ListOfYearsStrategy, BespokeEventsStrategy, ListOfTimePeriodsStrategy
@@ -73,17 +97,6 @@ def ingest() -> None:
     from pathlib import Path
     
     output_dir = Path(LOGS_DIR)
-    
-    # Determine which strategies to run
-    if multi_strategies:
-        # Explicit list from WIKIPEDIA_INGEST_STRATEGIES
-        strategy_names = [s.strip().lower() for s in multi_strategies.split(",")]
-    elif strategy == "all":
-        # "all" means all available strategies
-        strategy_names = ["list_of_years", "bespoke_events", "time_periods"]
-    else:
-        # Single strategy
-        strategy_names = [strategy]
     
     log_info(f"Running {len(strategy_names)} strategy(ies): {', '.join(strategy_names)}")
     
@@ -129,11 +142,16 @@ def ingest() -> None:
 
 
 def main() -> None:
-    try:
+    """Parse command-line arguments and run ingestion."""
+    import sys
+    
+    if len(sys.argv) > 1:
+        # Use command-line arguments
+        strategy_names = sys.argv[1:]
+        ingest(strategy_names)
+    else:
+        # Use environment variables (backward compatibility)
         ingest()
-    except Exception as e:  # pragma: no cover
-        log_error(f"Ingestion failed: {e}")
-        raise
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ class IngestionStrategies(Enum):
     LIST_OF_YEARS = auto()
     BESPOKE_EVENTS = auto()
     TIME_PERIODS = auto()
+    WARS = auto()
 
 class IngestionStrategyFactory:
     ...
@@ -27,6 +28,7 @@ class IngestionStrategyFactory:
         from strategies.bespoke_events_strategy import BespokeEventsStrategy
         from strategies.list_of_time_periods import ListOfTimePeriodsStrategy
         from strategies.list_of_years import ListOfYearsStrategy
+        from strategies.wars import WarsStrategy
         
         if strategy == IngestionStrategies.LIST_OF_YEARS:
             return ListOfYearsStrategy(run_id, output_dir)
@@ -34,5 +36,7 @@ class IngestionStrategyFactory:
             return BespokeEventsStrategy(run_id, output_dir)
         elif strategy == IngestionStrategies.TIME_PERIODS:
             return ListOfTimePeriodsStrategy(run_id, output_dir)
+        elif strategy == IngestionStrategies.WARS:
+            return WarsStrategy(run_id, output_dir)
         else:
             raise ValueError(f"Unknown ingestion strategy: {strategy}")
