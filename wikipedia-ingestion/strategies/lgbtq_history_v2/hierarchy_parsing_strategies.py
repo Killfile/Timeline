@@ -197,42 +197,77 @@ class NestedYearHierarchyStrategy(HierarchyParsingStrategy):
                                 log_info(f"    No following ul found for year {year_text}")
                 else:
                     log_info(f"    Element is not h3 or mw-heading div, it's {element.name}")
-                    # Look for nested structures: li elements that contain ul elements
-                    nested_lis = element.find_all('li', recursive=True)
-                    log_info(f"    Found {len(nested_lis)} li elements")
+                    
+                    # Check if there's a "See also" section in this element
+                    see_also_h2 = element.find('h2', id='See_also')
+                    if not see_also_h2:
+                        # Try finding by text
+                        for h2 in element.find_all('h2'):
+                            if re.search(r'\bSee also\b', h2.get_text(), re.IGNORECASE):
+                                see_also_h2 = h2
+                                break
+                    
+                    if see_also_h2:
+                        log_info(f"    Found 'See also' section in element, will exclude content after it")
+                    
+                    # If the element itself is a ul, process its li children
+                    # Otherwise, look for ul elements within it (recursively)
+                    uls_to_process = []
+                    if element.name == 'ul':
+                        uls_to_process.append(element)
+                    else:
+                        # Look for ul elements recursively, but only process top-level ones
+                        # (ones that are not inside another ul)
+                        all_uls = element.find_all('ul', recursive=True)
+                        for ul in all_uls:
+                            # Skip uls that come after "See also" section
+                            if see_also_h2 and self._comes_after(ul, see_also_h2):
+                                log_info(f"    Skipping ul that comes after 'See also' section")
+                                continue
+                            # Check if this ul is inside another ul
+                            parent_ul = ul.find_parent('ul')
+                            if not parent_ul or parent_ul not in all_uls:
+                                uls_to_process.append(ul)
+                    
+                    log_info(f"    Found {len(uls_to_process)} top-level ul elements to process")
+                    
+                    for ul in uls_to_process:
+                        # Get only direct children li elements of this ul
+                        nested_lis = ul.find_all('li', recursive=False)
+                        log_info(f"    Found {len(nested_lis)} li elements in this ul")
 
-                    for j, li in enumerate(nested_lis):
-                        log_info(f"      Processing li {j}: '{li.get_text()[:50]}...'")
-                        # Check if this li contains a ul (nested structure)
-                        nested_ul = li.find('ul', recursive=False)
-                        if nested_ul:
-                            log_info(f"        Found nested ul in li {j}")
-                            # This is a year container with nested events
-                            year_text = self._extract_year_from_li(li)
-                            if year_text:
-                                log_info(f"        Extracted year {year_text} from li")
-                                # Parse nested events
-                                nested_events = self._parse_nested_events(nested_ul, year_text)
-                                candidates.extend(nested_events)
-                                log_info(f"        Added {len(nested_events)} nested events for year {year_text}")
+                        for j, li in enumerate(nested_lis):
+                            log_info(f"      Processing li {j}: '{li.get_text()[:50]}...'")
+                            # Check if this li contains a ul (nested structure)
+                            nested_ul = li.find('ul', recursive=False)
+                            if nested_ul:
+                                log_info(f"        Found nested ul in li {j}")
+                                # This is a year container with nested events
+                                year_text = self._extract_year_from_li(li)
+                                if year_text:
+                                    log_info(f"        Extracted year {year_text} from li")
+                                    # Parse nested events
+                                    nested_events = self._parse_nested_events(nested_ul, year_text)
+                                    candidates.extend(nested_events)
+                                    log_info(f"        Added {len(nested_events)} nested events for year {year_text}")
+                                else:
+                                    log_info(f"        Could not extract year from li {j}")
                             else:
-                                log_info(f"        Could not extract year from li {j}")
-                        else:
-                            log_info(f"        No nested ul in li {j}")
-                            # This is a regular list item
-                            text = li.get_text().strip()
-                            if text and len(text) > 10:
-                                log_info(f"        Creating regular candidate: '{text[:50]}...'")
-                                candidates.append(EventCandidate(
-                                    text=text,
-                                    context={
-                                        'hierarchy_type': 'nested_year',
-                                        'century': century,
-                                        'has_nested': False
-                                    }
-                                ))
-                            else:
-                                log_info(f"        Skipping short text: '{text}'")
+                                log_info(f"        No nested ul in li {j}")
+                                # This is a regular list item
+                                text = li.get_text().strip()
+                                if text and len(text) > 10:
+                                    log_info(f"        Creating regular candidate: '{text[:50]}...'")
+                                    candidates.append(EventCandidate(
+                                        text=text,
+                                        context={
+                                            'hierarchy_type': 'nested_year',
+                                            'century': century,
+                                            'has_nested': False
+                                        }
+                                    ))
+                                else:
+                                    log_info(f"        Skipping short text: '{text}'")
 
         log_info(f"NestedYearHierarchyStrategy returning {len(candidates)} candidates")
         return candidates
@@ -330,6 +365,50 @@ class NestedYearHierarchyStrategy(HierarchyParsingStrategy):
                 ))
 
         return candidates
+    
+    def _comes_after(self, element1: Tag, element2: Tag) -> bool:
+        """Check if element1 comes after element2 in document order."""
+        # Use sourceline if available (BeautifulSoup provides this)
+        if hasattr(element1, 'sourceline') and hasattr(element2, 'sourceline'):
+            if element1.sourceline and element2.sourceline:
+                return element1.sourceline > element2.sourceline
+        
+        # Fallback: check if element2 is an ancestor of element1
+        if element2 in element1.parents:
+            return False  # element1 is inside element2, so it doesn't come after
+        
+        # Check if they share a common ancestor and compare positions
+        # Get all parents of both elements
+        parents1 = list(element1.parents)
+        parents2 = list(element2.parents)
+        
+        # Find common ancestor
+        common_ancestor = None
+        for p1 in parents1:
+            if p1 in parents2:
+                common_ancestor = p1
+                break
+        
+        if common_ancestor:
+            # Find which child of the common ancestor contains each element
+            child1 = element1
+            while child1.parent != common_ancestor:
+                child1 = child1.parent
+            child2 = element2
+            while child2.parent != common_ancestor:
+                child2 = child2.parent
+            
+            # Get all children of common ancestor
+            children = list(common_ancestor.children)
+            try:
+                idx1 = children.index(child1)
+                idx2 = children.index(child2)
+                return idx1 > idx2
+            except (ValueError, AttributeError):
+                pass
+        
+        # If we can't determine order, assume it doesn't come after
+        return False
 
 
 class HierarchyParsingStrategyFactory:

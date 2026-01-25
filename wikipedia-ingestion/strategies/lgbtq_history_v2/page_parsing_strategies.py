@@ -176,14 +176,50 @@ class CenturyTimelinePageStrategy(PageParsingStrategy):
         if not hierarchies:
             log_info("No year sections found, falling back to collecting all content")
             main_content = []
-            elements = content.find_all(recursive=False)
             
-            for element in elements:
+            # Look for the mw-parser-output div which contains the actual content
+            parser_output = content.find('div', class_='mw-parser-output')
+            if parser_output:
+                log_info("Found mw-parser-output div, iterating its children")
+                elements = parser_output.find_all(recursive=False)
+            else:
+                log_info("No mw-parser-output div found, using content div directly")
+                elements = content.find_all(recursive=False)
+                
+            log_info(f"Found {len(elements)} direct child elements to process")
+            
+            # Check if there's a "See also" h2 to stop at
+            see_also_h2 = content.find('h2', id='See_also')
+            if see_also_h2:
+                log_info(f"Found 'See also' h2 element, will stop collecting content before it")
+            else:
+                log_info("No h2 with id='See_also' found")
+            
+            for i, element in enumerate(elements):
+                log_info(f"Fallback element {i}/{len(elements)}: {element.name}, classes={element.get('class', [])[:2]}")
+                
+                # Stop if we've reached the "See also" section
+                if see_also_h2 and element == see_also_h2:
+                    log_info(f"Reached 'See also' h2 directly at element {i}, stopping content collection")
+                    break
+                # Also check if this is inside mw-heading div containing see_also h2
+                if see_also_h2 and element.name == 'div' and 'mw-heading' in element.get('class', []):
+                    contained_h2s = element.find_all('h2')
+                    log_info(f"Found mw-heading div at element {i} with {len(contained_h2s)} h2 elements")
+                    if see_also_h2 in contained_h2s:
+                        log_info(f"Reached 'See also' section (inside mw-heading div) at element {i}, stopping content collection")
+                        break
+                
+                # Check header text as fallback
                 if element.name in ['h2', 'h3', 'h4']:
                     header_text = element.get_text().strip()
+                    log_info(f"Checking header at element {i}: '{header_text[:50]}'")
                     if re.search(r'\bSee also\b', header_text, re.IGNORECASE):
+                        log_info(f"Reached 'See also' section by header text at element {i}, stopping content collection")
                         break
+                    
                 main_content.append(element)
+                log_info(f"Added element {i} to main_content")
             
             if main_content:
                 hierarchies.append({
@@ -211,11 +247,24 @@ class CenturyTimelinePageStrategy(PageParsingStrategy):
         # Use find_next to find the next ul element
         next_ul = h3_element.find_next('ul')
         if next_ul:
-            # Check if there's another h3 between this h3 and the ul
-            next_h3 = h3_element.find_next(['h2', 'h3', 'h4'])
-            if next_h3 and next_ul.sourceline > next_h3.sourceline:
+            # Check if there's another header between this h3 and the ul
+            next_header = h3_element.find_next(['h2', 'h3', 'h4'])
+            if next_header and next_ul.sourceline > next_header.sourceline:
                 # The ul comes after another header, so it's not for this h3
                 return None
+            
+            # Check if there's a "See also" section between this h3 and the ul
+            # First check for h2 with id="See_also"
+            all_headers_between = []
+            current = h3_element.find_next()
+            while current and current != next_ul:
+                if current.name == 'h2':
+                    if current.get('id') == 'See_also' or re.search(r'\bSee also\b', current.get_text(), re.IGNORECASE):
+                        log_info(f"Found 'See also' section between h3 and ul, excluding ul")
+                        return None
+                    all_headers_between.append(current)
+                current = current.find_next()
+            
             return next_ul
         return None
 
