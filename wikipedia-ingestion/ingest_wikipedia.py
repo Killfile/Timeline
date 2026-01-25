@@ -75,7 +75,7 @@ def ingest(strategy_names: list[str] | None = None) -> None:
             strategy_names = [s.strip().lower() for s in multi_strategies.split(",")]
         elif strategy == "all":
             # "all" means all available strategies
-            strategy_names = ["list_of_years", "bespoke_events", "time_periods", "wars"]
+            strategy_names = ["list_of_years", "bespoke_events", "time_periods", "wars", "lgbtq_history", "lgbtq_history_v2"]
         else:
             # Single strategy
             strategy_names = [strategy]
@@ -111,9 +111,7 @@ def ingest(strategy_names: list[str] | None = None) -> None:
             log_info(f"=== Running strategy: {strategy_obj.name()} ===")
             
             # Run strategy phases
-            fetch_result = strategy_obj.fetch()
-            parse_result = strategy_obj.parse(fetch_result)
-            artifact_data = strategy_obj.generate_artifacts(parse_result)
+            artifact_data = strategy_obj.ingest()
             
             # Write artifact to disk (centralized file writing)
             filename = artifact_data.suggested_filename or f"events_{artifact_data.strategy_name}_{artifact_data.run_id}.json"

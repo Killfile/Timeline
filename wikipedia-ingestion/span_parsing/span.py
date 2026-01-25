@@ -98,10 +98,25 @@ class Span:
 
 
 class SpanEncoder(json.JSONEncoder):
-    """JSON encoder that handles Span objects."""
+    """JSON encoder that handles Span objects, including nested ones in dicts/lists."""
     
     def default(self, obj):
         if isinstance(obj, Span):
             return obj.to_dict()
         # Let the base class handle everything else
         return super().default(obj)
+    
+    def encode(self, obj):
+        """Override encode to recursively process dicts and lists for Span objects."""
+        return super().encode(self._process_object(obj))
+    
+    def _process_object(self, obj):
+        """Recursively process objects to convert Span instances to dicts."""
+        if isinstance(obj, Span):
+            return obj.to_dict()
+        elif isinstance(obj, dict):
+            return {key: self._process_object(value) for key, value in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._process_object(item) for item in obj]
+        else:
+            return obj

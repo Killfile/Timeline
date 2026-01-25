@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Database load script - loads existing JSON artifacts to database.
+# This is step 2 of the atomic-reimport process, without the parsing.
+#
+# This script:
+# 1. Runs database-loader in UPSERT mode (delete by URL, then insert)
+# 2. Preserves all enrichment data (event_enrichments, event_categories) via event_key
+#
+# Usage:
+#   ./scripts/load-to-database
+#
+# Environment Variables:
+#   ARTIFACT_DIR: Directory containing JSON artifact files (default: wikipedia-ingestion/logs/)
+#   ARTIFACT_PATTERN: Glob pattern for artifact files (default: *.json)
+#   LOADER_MODE: Load mode - 'replace' (clear all) or 'upsert' (delete by URL then insert)
+#                Default: 'upsert'
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+COMPOSE="docker compose"
+if docker-compose version >/dev/null 2>&1; then
+  true  # Allow older docker-compose too
+fi
+
+echo "========================================"
+echo "Database Load Only"
+echo "========================================"
+echo ""
+echo "This will:"
+echo "  - Load existing JSON artifacts from wikipedia-ingestion/logs/"
+echo "  - Use UPSERT mode (delete by URL, then insert)"
+echo "  - Preserve all enrichment data (categories, interest counts)"
+echo ""
+echo "Press Ctrl+C to cancel, or wait 3 seconds to continue..."
+sleep 3
+
+echo ""
+echo "========================================"
+echo "Loading artifacts to database..."
+echo "========================================"
+
+# Set default environment variables
+export LOADER_MODE="${LOADER_MODE:-upsert}"
+export ARTIFACT_PATTERN="${ARTIFACT_PATTERN:-*.json}"
+
+echo "LOADER_MODE: $LOADER_MODE"
+echo "ARTIFACT_PATTERN: $ARTIFACT_PATTERN"
+
+$COMPOSE run --rm -e LOADER_MODE="$LOADER_MODE" -e ARTIFACT_PATTERN="$ARTIFACT_PATTERN" database-loader
+
+echo ""
+echo "========================================"
+echo "✅ Database Load Complete!"
+echo "========================================"
+echo ""
+echo "Artifacts loaded from: wikipedia-ingestion/logs/"
+echo "Check logs for load_report_*.json and load_errors_*.json if needed"
+echo ""
+echo "Done!"

@@ -817,7 +817,7 @@ class ListOfYearsStrategy(IngestionStrategy):
                 "events_heading": item.get("events_heading"),
                 "h3_context": {"tag": tag, "month_bucket": month_bucket},
                 "scope": scope,
-                "bullet_span": bullet_span,
+                "bullet_span": bullet_span.to_dict() if bullet_span else None,
                 "source_page": {"title": title, "url": canonical_url},
                 "span_match_notes": span_match_notes,
             },

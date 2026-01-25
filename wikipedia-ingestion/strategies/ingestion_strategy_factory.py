@@ -8,6 +8,8 @@ class IngestionStrategies(Enum):
     BESPOKE_EVENTS = auto()
     TIME_PERIODS = auto()
     WARS = auto()
+    LGBTQ_HISTORY = auto()
+    LGBTQ_HISTORY_V2 = auto()
 
 class IngestionStrategyFactory:
     ...
@@ -29,6 +31,8 @@ class IngestionStrategyFactory:
         from strategies.list_of_time_periods import ListOfTimePeriodsStrategy
         from strategies.list_of_years import ListOfYearsStrategy
         from strategies.wars import WarsStrategy
+
+        from strategies.lgbtq_history_v2 import LgbtqHistoryV2Strategy
         
         if strategy == IngestionStrategies.LIST_OF_YEARS:
             return ListOfYearsStrategy(run_id, output_dir)
@@ -38,5 +42,8 @@ class IngestionStrategyFactory:
             return ListOfTimePeriodsStrategy(run_id, output_dir)
         elif strategy == IngestionStrategies.WARS:
             return WarsStrategy(run_id, output_dir)
+
+        elif strategy == IngestionStrategies.LGBTQ_HISTORY_V2:
+            return LgbtqHistoryV2Strategy(run_id, output_dir)
         else:
             raise ValueError(f"Unknown ingestion strategy: {strategy}")

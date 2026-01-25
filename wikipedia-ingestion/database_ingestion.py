@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from event_key import compute_event_key
+from span_parsing.span import SpanEncoder
 
 # psycopg2 is only required for DB IO (not for HTML parsing/unit tests).
 try:
@@ -230,7 +231,7 @@ def insert_event(conn, event: dict, category: str | None, strategy_id: int | Non
                     category,
                     event.get("url"),
                     debug.get("method", "unknown"),
-                    json.dumps(debug.get("matches", [])),
+                    json.dumps(debug.get("matches", []), cls=SpanEncoder),
                     event.get("start_year"),
                     event.get("start_month"),
                     event.get("start_day"),

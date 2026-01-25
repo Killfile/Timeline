@@ -2,10 +2,12 @@ from enum import Enum, auto
 from span_parsing.orchestrators.parse_orchestrator import ParseOrchestrator
 from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 from span_parsing.orchestrators.time_period_parse_orchestrator import TimePeriodParseOrchestrator
+from span_parsing.orchestrators.inline_no_fallback_orchestrator import InlineNoFallbackOrchestrator
 
 class ParseOrchestratorTypes(Enum):
     YEARS = auto()
     TIME_PERIODS = auto()
+    INLINE_NO_FALLBACK = auto()
 
 class ParseOrchestratorFactory:
     """Factory for creating parse orchestrators based on strategy type."""
@@ -27,5 +29,7 @@ class ParseOrchestratorFactory:
             return YearsParseOrchestrator()
         elif strategy_type == ParseOrchestratorTypes.TIME_PERIODS:
             return TimePeriodParseOrchestrator()
+        elif strategy_type == ParseOrchestratorTypes.INLINE_NO_FALLBACK:
+            return InlineNoFallbackOrchestrator()
         else:
             raise ValueError(f"Unknown orchestrator type: {strategy_type}")

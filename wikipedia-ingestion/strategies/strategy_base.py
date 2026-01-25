@@ -105,6 +105,22 @@ class IngestionStrategy(ABC):
         self.run_id = run_id
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def ingest(self) -> ArtifactData:
+        """Run the full ingestion process for this strategy.
+        
+        This method orchestrates the fetch, parse, artifact generation,
+        and log cleanup phases.
+        
+        Returns:
+            ArtifactData containing the generated artifact information.
+
+        """
+        fetch_result = self.fetch()
+        parse_result = self.parse(fetch_result)
+        artifact_data = self.generate_artifacts(parse_result)
+        
+        return artifact_data
         
     @abstractmethod
     def name(self) -> str:
