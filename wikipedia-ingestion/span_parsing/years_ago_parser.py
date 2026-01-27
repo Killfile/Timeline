@@ -27,6 +27,9 @@ class YearsAgoParser(SpanParserStrategy):
         Returns:
             A Span object if parsing succeeds, None otherwise
         """
+        # Use page_year as the anchor when provided (otherwise fallback to current year)
+        anchor_year = page_year if page_year and page_year > 0 else datetime.utcnow().year
+
         # Match range pattern: "5-2 million years ago"
         m_range = re.match(
             r"^\s*([\d,\.]+)\s*-\s*([\d,\.]+)\s+(million|thousand)?\s*years?\s+ago\b",
@@ -56,11 +59,10 @@ class YearsAgoParser(SpanParserStrategy):
                 start_years_ago = int(start_num)
                 end_years_ago = int(end_num)
             
-            # Convert to BCE (anchor to current year)
-            current_year = datetime.now().year
+            # Convert to BCE (anchor to provided year)
             # Larger number of years ago = earlier date (larger BC year)
-            start_year = current_year - start_years_ago
-            end_year = current_year - end_years_ago
+            start_year = anchor_year - start_years_ago
+            end_year = anchor_year - end_years_ago
             
             span = Span(
                 start_year=abs(start_year),
@@ -101,9 +103,8 @@ class YearsAgoParser(SpanParserStrategy):
             else:
                 years_ago = int(num)
             
-            # Convert to BCE (anchor to current year)
-            current_year = datetime.now().year
-            year = current_year - years_ago
+            # Convert to BCE (anchor to provided year)
+            year = anchor_year - years_ago
             
             span = Span(
                 start_year=abs(year),

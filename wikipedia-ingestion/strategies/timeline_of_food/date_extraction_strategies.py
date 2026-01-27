@@ -7,6 +7,7 @@ using the FoodTimelineParseOrchestrator.
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 from bs4 import BeautifulSoup, Tag
@@ -36,9 +37,14 @@ class EventParser:
     instances with proper date ranges and confidence levels.
     """
     
-    def __init__(self):
-        """Initialize the event parser with date extraction orchestrator."""
+    def __init__(self, anchor_year: int | None = None):
+        """Initialize the event parser with date extraction orchestrator.
+        
+        anchor_year sets the reference year for relative formats (e.g., "years ago").
+        Defaults to current UTC year when not provided.
+        """
         self.orchestrator = FoodTimelineParseOrchestrator()
+        self.anchor_year = anchor_year or datetime.utcnow().year
         self.undated_events: list[dict] = []  # Track events without dates
     
     def parse_bullet_point(
@@ -70,7 +76,7 @@ class EventParser:
         # Extract date using orchestrator
         span = self.orchestrator.parse_span_from_bullet(
             clean_text,
-            span_year=section.date_range_start if section.date_range_start > 0 else 2000,
+            span_year=self.anchor_year,
             assume_is_bc=section.is_bc_start
         )
 
@@ -94,8 +100,15 @@ class EventParser:
         # Extract citation references
         citations = self._extract_citations(bullet_text)
         
+        # Contentious/disputed marker detection
+        is_contentious = bool(re.search(r"\b(contentious|disputed)\b", clean_text, flags=re.IGNORECASE))
+
         # Determine confidence level
-        confidence = self._determine_confidence(span, section, used_section_fallback)
+        confidence = self._determine_confidence(span, section, used_section_fallback, is_contentious)
+
+        parsing_notes = None
+        if is_contentious:
+            parsing_notes = "contentious/disputed date reference"
 
         # Log how the date was resolved (explicit/decade/section fallback)
         self._log_date_resolution(
@@ -155,6 +168,7 @@ class EventParser:
             external_references=citations,
             source_format=source_format,
             span_match_notes=span_match_notes,
+            parsing_notes=parsing_notes,
             precision=precision_val,
         )
         
@@ -227,17 +241,20 @@ class EventParser:
         matches = re.findall(r'\[(\d+)\]', text)
         return [int(m) for m in matches]
     
-    def _determine_confidence(self, span: Optional[Span], section: TextSection, used_section_fallback: bool = False) -> str:
+    def _determine_confidence(self, span: Optional[Span], section: TextSection, used_section_fallback: bool = False, is_contentious: bool = False) -> str:
         """Determine confidence level for the date extraction.
         
         Args:
             span: Parsed date span (None if no date found)
             section: Section context
             used_section_fallback: True if section context supplied the date
+            is_contentious: True if text contains contentious/disputed markers
         
         Returns:
             Confidence level: "explicit" | "inferred" | "approximate" | "contentious" | "fallback"
         """
+        if is_contentious:
+            return "contentious"
         if used_section_fallback:
             return "inferred"
         if not span:

@@ -50,7 +50,8 @@ class TimelineOfFoodStrategy(IngestionStrategy):
         super().__init__(run_id, output_dir)
         
         self.section_parser = TextSectionParser()
-        self.event_parser = EventParser()
+        # Anchor relative date parsing (e.g., "years ago") to the run year for determinism
+        self.event_parser = EventParser(anchor_year=datetime.utcnow().year)
         
         # Storage for parsed data
         self.html_content: Optional[str] = None

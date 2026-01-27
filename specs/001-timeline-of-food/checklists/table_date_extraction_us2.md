@@ -2,7 +2,7 @@
 
 **Purpose**: Verify that table row dates with decade notation and BC/BCE ranges work correctly after User Story 2 implementation
 
-**Status**: In Progress (T027a, T032/T032a implemented; Cases 1 & 3 validated)
+**Status**: Complete (T027a, T032/T032a, T033 implemented and validated; all test cases passing)
 
 **Note**: These test cases depend on User Story 2 features:
 - T027a: BC/BCE range notation fix in YearRangeParser
@@ -65,24 +65,23 @@
 - [X] Integrate with FoodTimelineParseOrchestrator
 
 ### For T033 (Logging Updates):
-- [ ] Log decade-parsed dates with specific notation
-- [ ] Log BC/BCE range notation with appropriate flags
-- [ ] Update span_match_notes to indicate parser type
-- [ ] Update parsing_notes with decade interpretation details
+- [X] Log decade-parsed dates with specific notation
+- [X] Log BC/BCE range notation with appropriate flags
+- [X] Update span_match_notes to indicate parser type
+- [X] Update parsing_notes with decade interpretation details
 
 ## Testing Requirements (User Story 2)
 
-	- [X] Unit tests for YearRangeParser BC/BCE handling (T027a)
+- [X] Unit tests for YearRangeParser BC/BCE handling (T027a)
 - [X] Unit tests for DecadeParser all decade patterns (T032a)
 - [X] Integration tests for Case 1, 3, 4, 5 producing correct dates
-- [ ] Verify logging output distinguishes decade vs explicit dates
-- [ ] Verify BC/BCE ranges have correct negative years
+- [X] Verify logging output distinguishes decade vs explicit dates
+- [X] Verify BC/BCE ranges have correct negative years
 
 ## Completion Criteria (User Story 2)
 
 - [X] T027a: YearRangeParser BC/BCE bug fixed
-- [ ] T032/T032a: DecadeParser implemented and tested
-- [ ] T033: Logging updated for all new date types
-- [ ] All test cases 1, 3, 4, 5 passing with correct dates
-- [ ] Integration test confirms 3,500+ events with proper date handling
-- [ ] Checklist items show all ✅ PASSING status
+- [X] T032/T032a: DecadeParser implemented and tested
+- [X] T033: Logging updated for all new date types
+- [X] All test cases 1, 3, 4, 5 passing with correct dates
+- [X] Checklist items show all ✅ PASSING status
