@@ -13,13 +13,13 @@ Table events should use the date from the **first column** of the table row for 
 ## Test Cases
 
 ### Case 2: Specific Year (User Story 1 MVP)
-- [ ] **Description**: "One of America's first candy-making machines invented in Boston by..."
-- [ ] **Table column 1**: "1847" or similar format
-- [ ] **Expected start_year**: 1847
-- [ ] **Expected end_year**: 1847
-- [ ] **Expected span_match_notes**: Should indicate explicit year match
-- [ ] **Current result**: PASS - Table extraction working for simple years
-- [ ] **Status**: ✅ PASSING
+- [X] **Description**: "One of America's first candy-making machines invented in Boston by..."
+- [X] **Table column 1**: "1847" or similar format
+- [X] **Expected start_year**: 1847
+- [X] **Expected end_year**: 1847
+- [X] **Expected span_match_notes**: Should indicate explicit year match
+- [X] **Current result**: PASS - Table extraction working for simple years
+- [X] **Status**: ✅ PASSING
 
 ### Case 1: Decade Notation (User Story 2 - Depends on T032/T032a)
 - [ ] **Description**: "New potato varieties are brought from Chile to Europe, in an attempt..."

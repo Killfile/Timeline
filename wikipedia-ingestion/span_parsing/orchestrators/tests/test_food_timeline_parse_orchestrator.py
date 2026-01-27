@@ -1,6 +1,12 @@
 """Unit tests for FoodTimelineParseOrchestrator."""
 
+import sys
+from pathlib import Path
+
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from span_parsing.orchestrators.food_timeline_parse_orchestrator import FoodTimelineParseOrchestrator
 
 
@@ -54,6 +60,18 @@ class TestFoodTimelineParseOrchestrator:
         assert span is not None
         # Note: Parser has issues with this format (returns single year, is_bc=False)
         assert span.start_year == 8000
+    
+    def test_year_range_bce_327_324(self):
+        """Test the specific bug: 327–324 BCE should parse as range, not single year."""
+        span = self.orchestrator.parse_span_from_bullet("327–324 BCE", 2000, assume_is_bc=False)
+        assert span is not None, "Failed to parse '327–324 BCE'"
+        # Must parse as a range, not just "327" as a single year
+        assert span.start_year == 327, f"Expected start_year=327, got {span.start_year}"
+        assert span.end_year == 324, f"Expected end_year=324, got {span.end_year}"
+        assert span.start_year_is_bc is True, f"Expected start_year_is_bc=True, got {span.start_year_is_bc}"
+        assert span.end_year_is_bc is True, f"Expected end_year_is_bc=True, got {span.end_year_is_bc}"
+        # Verify it's recognized as a range, not a single year
+        assert "range" in span.match_type.lower(), f"Expected 'range' in match_type, got '{span.match_type}'"
     
     def test_year_range_ad(self):
         """Test year range AD."""
@@ -112,9 +130,16 @@ class TestFoodTimelineParseOrchestrator:
         """Test simple years ago format."""
         span = self.orchestrator.parse_span_from_bullet("250,000 years ago", 2000, assume_is_bc=False)
         assert span is not None
-        # Note: Parser has is_bc issue currently
-        # Just verify it parsed something
-        assert span.start_year > 0
+        assert span.start_year_is_bc is True
+        assert span.match_type.lower().find("years ago") != -1
+
+    def test_years_ago_precedes_plain_year(self):
+        """Ensure 'years ago' is matched before plain 3-4 digit year parser."""
+        span = self.orchestrator.parse_span_from_bullet("250,000 years ago", 2000, assume_is_bc=False)
+        assert span is not None
+        # Should not be the plain year-only match
+        assert "year only" not in span.match_type.lower()
+        assert "years ago" in span.match_type.lower()
     
     def test_years_ago_million(self):
         """Test million years ago format."""
@@ -127,6 +152,16 @@ class TestFoodTimelineParseOrchestrator:
         span = self.orchestrator.parse_span_from_bullet("5-2 million years ago", 2000, assume_is_bc=False)
         assert span is not None
         assert span.start_year_is_bc is True
+
+    def test_decade_parser_matches_before_fallback(self):
+        """Decade notation should resolve to a decade span, not fallback or plain year."""
+        span = self.orchestrator.parse_span_from_bullet("1990s innovation boom", 2000, assume_is_bc=False)
+        assert span is not None
+        assert span.start_year == 1990
+        assert span.end_year == 1999
+        assert span.start_year_is_bc is False
+        assert span.end_year_is_bc is False
+        assert "decade" in span.match_type.lower()
     
     # Test priority ordering - more specific formats should match first
     def test_priority_tilde_over_fallback(self):

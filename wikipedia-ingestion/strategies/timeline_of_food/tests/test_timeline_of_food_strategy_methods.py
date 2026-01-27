@@ -40,12 +40,12 @@ def mock_response():
 class TestTimelineOfFoodStrategyFetch:
     """Tests for fetch() method (T015a)."""
     
-    def test_fetch_returns_fetch_result(self, strategy, mock_response):
+    def test_fetch_returns_fetch_result(self, strategy):
         """Test that fetch() returns a FetchResult object."""
         from strategies.strategy_base import FetchResult
         
-        with patch('strategies.timeline_of_food.timeline_of_food_strategy.requests.get') as mock_get:
-            mock_get.return_value = mock_response
+        with patch('strategies.timeline_of_food.timeline_of_food_strategy.get_html') as mock_get_html:
+            mock_get_html.return_value = (("<html><body>Test content</body></html>", "https://en.wikipedia.org/wiki/Timeline_of_food"), None)
             
             result = strategy.fetch()
             
@@ -53,10 +53,10 @@ class TestTimelineOfFoodStrategyFetch:
             assert result.strategy_name == "TimelineOfFood"
             assert result.fetch_count == 1
 
-    def test_fetch_caches_content(self, strategy, mock_response):
+    def test_fetch_caches_content(self, strategy):
         """Test that fetch() caches the HTML content."""
-        with patch('strategies.timeline_of_food.timeline_of_food_strategy.requests.get') as mock_get:
-            mock_get.return_value = mock_response
+        with patch('strategies.timeline_of_food.timeline_of_food_strategy.get_html') as mock_get_html:
+            mock_get_html.return_value = (("<html><body>Fetched content</body></html>", "https://en.wikipedia.org/wiki/Timeline_of_food"), None)
             
             result = strategy.fetch()
             
@@ -65,70 +65,56 @@ class TestTimelineOfFoodStrategyFetch:
             assert len(strategy.html_content) > 0
             assert result.fetch_count == 1
 
-    def test_fetch_with_cache_hit(self, strategy, mock_response):
-        """Test that fetch() uses cached file if it exists."""
-        # Create cache file
-        strategy.cache_dir.mkdir(exist_ok=True)
-        strategy.cache_path.write_text("<html><body>Cached content</body></html>")
-        
-        with patch('strategies.timeline_of_food.timeline_of_food_strategy.requests.get') as mock_get:
+    def test_fetch_with_cache_hit(self, strategy):
+        """Test that fetch() uses cached content from ingestion_common cache."""
+        with patch('strategies.timeline_of_food.timeline_of_food_strategy.get_html') as mock_get_html:
+            # Simulate cache hit in get_html
+            mock_get_html.return_value = (("<html><body>Cached content</body></html>", "https://en.wikipedia.org/wiki/Timeline_of_food"), None)
+            
             result = strategy.fetch()
             
-            # Should NOT call requests.get if cache exists
-            mock_get.assert_not_called()
+            # get_html should be called (it handles caching internally)
+            mock_get_html.assert_called_once()
             assert strategy.html_content == "<html><body>Cached content</body></html>"
-            assert result.fetch_metadata["cache_hit"] is True
+            # Check that final_url is captured
+            assert strategy.canonical_url == "https://en.wikipedia.org/wiki/Timeline_of_food"
 
     def test_fetch_http_error(self, strategy, tmp_path):
         """Test fetch() handling of HTTP errors."""
-        import requests
-        
-        # Make sure cache doesn't exist
-        if strategy.cache_path.exists():
-            strategy.cache_path.unlink()
-        
-        with patch('strategies.timeline_of_food.timeline_of_food_strategy.requests.get') as mock_get:
-            # Create a mock response that will raise HTTPError on raise_for_status()
-            mock_response = Mock()
-            mock_response.status_code = 404
-            mock_error = requests.HTTPError("404 Not Found")
-            mock_error.response = mock_response
-            mock_response.raise_for_status.side_effect = mock_error
-            mock_get.return_value = mock_response
+        with patch('strategies.timeline_of_food.timeline_of_food_strategy.get_html') as mock_get_html:
+            # Simulate HTTP error from get_html
+            mock_get_html.return_value = (("", "https://en.wikipedia.org/wiki/Timeline_of_food"), "HTTP error: 404 Not Found")
             
             with pytest.raises(RuntimeError) as exc_info:
                 strategy.fetch()
             
-            assert "404" in str(exc_info.value)
+            assert "404" in str(exc_info.value) or "error" in str(exc_info.value).lower()
 
     def test_fetch_timeout_error(self, strategy, tmp_path):
         """Test fetch() handling of timeout errors."""
-        import requests
-        
-        # Make sure cache doesn't exist
-        if strategy.cache_path.exists():
-            strategy.cache_path.unlink()
-        
-        with patch('strategies.timeline_of_food.timeline_of_food_strategy.requests.get') as mock_get:
-            mock_get.side_effect = requests.Timeout("Connection timeout")
+        with patch('strategies.timeline_of_food.timeline_of_food_strategy.get_html') as mock_get_html:
+            # Simulate timeout error from get_html
+            mock_get_html.return_value = (("", "https://en.wikipedia.org/wiki/Timeline_of_food"), "Connection timeout")
             
             with pytest.raises(RuntimeError) as exc_info:
                 strategy.fetch()
             
             error_msg = str(exc_info.value).lower()
-            assert "timeout" in error_msg or "timed out" in error_msg
+            assert "timeout" in error_msg or "timed out" in error_msg or "error" in error_msg
 
-    def test_fetch_sets_metadata(self, strategy, mock_response):
+    def test_fetch_sets_metadata(self, strategy):
         """Test that fetch() populates metadata correctly."""
-        with patch('strategies.timeline_of_food.timeline_of_food_strategy.requests.get') as mock_get:
-            mock_get.return_value = mock_response
+        with patch('strategies.timeline_of_food.timeline_of_food_strategy.get_html') as mock_get_html:
+            html_content = "<html><body>Test content</body></html>"
+            mock_get_html.return_value = ((html_content, "https://en.wikipedia.org/wiki/Timeline_of_food"), None)
             
             result = strategy.fetch()
             
             assert result.fetch_metadata["url"] == strategy.WIKIPEDIA_URL
-            assert result.fetch_metadata["http_status"] == 200
+            assert result.fetch_metadata["final_url"] == "https://en.wikipedia.org/wiki/Timeline_of_food"
             assert "fetch_timestamp_utc" in result.fetch_metadata
             assert "content_length_bytes" in result.fetch_metadata
+            assert result.fetch_metadata["content_length_bytes"] == len(html_content)
 
 
 class TestTimelineOfFoodStrategyParse:

@@ -51,6 +51,7 @@ class TestTextSectionParser:
         assert sections[0].name == "19th century"
         assert sections[0].date_range_start == 1801
         assert sections[0].date_range_end == 1900
+        assert sections[0].inferred_date_range == (1801, 1900)
     
     def test_parse_multiple_sections(self):
         """Test parsing multiple sections with simple years and centuries."""
@@ -171,15 +172,13 @@ class TestTextSectionParser:
         parser = TextSectionParser()
         sections = parser.parse_sections(html)
         
-        assert len(sections) == 2
+        assert len(sections) == 3  # h2 + h3 + h2
         assert sections[0].name == "1850"
-        assert sections[1].name == "1900"
-        # Counting stops when the next h2 is encountered
-        # Our simple HTML doesn't have mw-heading div wrappers, so it counts
-        # the UL elements after the h2 until it hits the next h2
-        # First h2's siblings include both ULs (3 + 1 events total = 4)
+        assert sections[1].name == "Subsection"
+        assert sections[2].name == "1900"
+        # Counting stops when the next h2 is encountered (h3 is within the first section)
         assert sections[0].event_count == 4
-        assert sections[1].event_count == 1
+        assert sections[2].event_count == 1
     
     def test_parse_section_without_headline_span(self):
         """Test parsing section without mw-headline span (plain heading)."""
@@ -217,12 +216,60 @@ class TestTextSectionParser:
         parser = TextSectionParser()
         sections = parser.parse_sections(html)
         
-        # Parser only extracts h2 headers per Wikipedia article structure
-        assert len(sections) == 2
+        # Parser now extracts h2-h4; h3 inherits its parent range
+        assert len(sections) == 3
         assert sections[0].name == "1800"
         assert sections[0].level == 2
-        assert sections[1].name == "1900"
-        assert sections[1].level == 2
+        assert sections[1].name == "Subsection"
+        assert sections[1].level == 3
+        assert sections[2].name == "1900"
+        assert sections[2].level == 2
+
+    def test_parse_bc_range_heading(self):
+        """BC range headings should convert to signed years with BC flags."""
+        html = """
+        <html>
+        <body>
+            <h2 id="bce"><span class="mw-headline">4000-2000 BCE</span></h2>
+            <ul><li>Event 1</li></ul>
+        </body>
+        </html>
+        """
+
+        parser = TextSectionParser()
+        sections = parser.parse_sections(html)
+
+        assert len(sections) == 1
+        section = sections[0]
+        assert section.date_range_start == -4000
+        assert section.date_range_end == -2000
+        assert section.is_bc_start is True
+        assert section.is_bc_end is True
+        assert section.inferred_date_range == (-4000, -2000)
+
+    def test_inherit_date_range_from_parent(self):
+        """Child headers (h3/h4) inherit parent range when none is parsed."""
+        html = """
+        <html>
+        <body>
+            <h2 id="bce"><span class="mw-headline">4000-2000 BCE</span></h2>
+            <ul><li>Parent Event</li></ul>
+            <h3 id="child"><span class="mw-headline">Ancient Egypt</span></h3>
+            <ul><li>Child Event</li></ul>
+        </body>
+        </html>
+        """
+
+        parser = TextSectionParser()
+        sections = parser.parse_sections(html)
+
+        assert len(sections) == 2
+        parent, child = sections
+        assert parent.inferred_date_range == (-4000, -2000)
+        assert child.inferred_date_range == (-4000, -2000)
+        assert child.date_is_explicit is False
+        assert child.date_range_start == -4000
+        assert child.date_range_end == -2000
     
     def test_section_without_parseable_date(self):
         """Test section with no explicit date uses fallback parser."""
@@ -270,6 +317,7 @@ class TestTextSection:
         assert section.date_is_range is True
         assert section.position == 5
         assert section.event_count == 25
+        assert section.inferred_date_range is None
     
     def test_text_section_bc_flags(self):
         """Test BC flag fields in TextSection."""
@@ -288,3 +336,4 @@ class TestTextSection:
         
         assert section.is_bc_start is True
         assert section.is_bc_end is True
+        assert section.inferred_date_range is None

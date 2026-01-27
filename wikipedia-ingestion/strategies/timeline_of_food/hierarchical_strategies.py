@@ -38,6 +38,7 @@ class TextSection:
     is_bc_start: bool = False  # True if start date is BC
     is_bc_end: bool = False  # True if end date is BC
     event_count: int = 0  # Number of events in this section
+    inferred_date_range: Optional[tuple[int, int]] = None  # Final range after inheritance (signed years)
 
 
 class TextSectionParser:
@@ -64,26 +65,23 @@ class TextSectionParser:
         sections = []
         position = 0
         
-        # Find all h2 headers (main sections)
-        for header in soup.find_all('h2'):
-            # Skip if no id (navigation elements)
-            if not header.get('id'):
-                continue
+        # Track latest section seen at each level for inheritance
+        last_section_at_level: dict[int, TextSection] = {}
+        
+        # Process headers in document order (h2-h4)
+        for header in soup.find_all(re.compile(r'^h[2-4]$')):
             
-            # Extract section name
             section_name = header.get_text(strip=True)
-            
             if not section_name or self._is_meta_section_by_name(section_name):
                 continue
             
-            # Determine header level
-            level = 2  # h2
+            level = int(header.name[-1])
             
             # Parse date range from section name
             date_info = self._parse_section_date(section_name)
             
-            # Count events in this section
-            event_count = self._count_events_in_section_by_header(header)
+            # Count events (most relevant for h2, but safe for all)
+            event_count = self._count_events_in_section_by_header(header) if level == 2 else 0
             
             section = TextSection(
                 name=section_name,
@@ -95,9 +93,36 @@ class TextSectionParser:
                 position=position,
                 is_bc_start=date_info['is_bc_start'],
                 is_bc_end=date_info['is_bc_end'],
-                event_count=event_count
+                event_count=event_count,
+                inferred_date_range=date_info['inferred_span']
             )
+            
+            # If this is a child header (h3/h4) with no digits, drop fallback dates so it can inherit
+            if level > 2 and not re.search(r"\d", section_name):
+                section.inferred_date_range = None
+                section.date_range_start = 0
+                section.date_range_end = 0
+                section.date_is_explicit = False
+                section.date_is_range = False
+                section.is_bc_start = False
+                section.is_bc_end = False
+
+            # Inherit date range from nearest ancestor if none parsed
+            if section.inferred_date_range is None:
+                parent_levels = [lvl for lvl in last_section_at_level if lvl < level]
+                if parent_levels:
+                    parent_level = max(parent_levels)
+                    parent_section = last_section_at_level[parent_level]
+                    section.inferred_date_range = parent_section.inferred_date_range
+                    section.is_bc_start = parent_section.is_bc_start
+                    section.is_bc_end = parent_section.is_bc_end
+                    section.date_range_start = parent_section.date_range_start
+                    section.date_range_end = parent_section.date_range_end
+                    section.date_is_explicit = False
+                    section.date_is_range = parent_section.date_range_start != parent_section.date_range_end
+            
             sections.append(section)
+            last_section_at_level[level] = section
             position += 1
         
         return sections
@@ -125,19 +150,42 @@ class TextSectionParser:
             section_name: Section heading text (e.g., "4000-2000 BCE")
         
         Returns:
-            Dictionary with keys: start, end, is_explicit, is_range, is_bc_start, is_bc_end
+            Dictionary with keys: start, end, is_explicit, is_range, is_bc_start, is_bc_end, inferred_span
         """
+        # Try a header-specific range regex first to capture "4000-2000 BCE" style headings
+        range_match = re.match(r"^\s*(\d{1,4})\s*[–—−-]\s*(\d{1,4})\s*(BCE|BC|CE|AD)?\s*$", section_name, flags=re.IGNORECASE)
+        if range_match:
+            start_val = int(range_match.group(1))
+            end_val = int(range_match.group(2))
+            era = (range_match.group(3) or "").upper()
+            is_bc = era in {"BC", "BCE"}
+            is_range = True
+            start_signed = self._to_signed_year(start_val, is_bc)
+            end_signed = self._to_signed_year(end_val, is_bc)
+            return {
+                'start': start_signed,
+                'end': end_signed,
+                'is_explicit': True,
+                'is_range': is_range,
+                'is_bc_start': is_bc,
+                'is_bc_end': is_bc,
+                'inferred_span': (start_signed, end_signed),
+            }
+
         # Try to parse date using orchestrator
         span = self.orchestrator.parse_span_from_bullet(section_name, span_year=2000, assume_is_bc=False)
-        
+
         if span:
+            start = self._to_signed_year(span.start_year, span.start_year_is_bc)
+            end = self._to_signed_year(span.end_year, span.end_year_is_bc)
             return {
-                'start': span.start_year,
-                'end': span.end_year,
+                'start': start,
+                'end': end,
                 'is_explicit': True,
                 'is_range': span.start_year != span.end_year,
                 'is_bc_start': span.start_year_is_bc,
                 'is_bc_end': span.end_year_is_bc,
+                'inferred_span': (start, end),
             }
         
         # Fallback for sections without parseable dates (e.g., "Prehistoric times")
@@ -148,7 +196,13 @@ class TextSectionParser:
             'is_range': False,
             'is_bc_start': False,
             'is_bc_end': False,
+            'inferred_span': None,
         }
+
+    @staticmethod
+    def _to_signed_year(year: int, is_bc: bool) -> int:
+        """Convert year and BC flag to signed integer (BC → negative)."""
+        return -year if is_bc else year
     
     def _count_events_in_section_by_header(self, header: Tag) -> int:
         """Count bullet point events following this header.

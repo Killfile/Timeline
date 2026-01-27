@@ -48,12 +48,15 @@ class YearRangeParser(SpanParserStrategy):
 
             start_year_is_bc = any(marker in s_era for marker in bc_markers)
             end_year_is_bc = any(marker in e_era for marker in bc_markers)
+            start_year_is_ad = any(marker in s_era for marker in ad_markers)
 
             if not start_year_is_bc and not end_year_is_bc and page_bc:
                 start_year_is_bc = end_year_is_bc = True
 
-            if end_year_is_bc and not start_year_is_bc and s_era == "":
-                start_year_is_bc = end_year_is_bc
+            # Formal logic: end_year_is_bc IMPLIES start_year_is_bc
+            # If end is marked BC and start is not explicitly marked AD/CE, apply BC to start
+            if end_year_is_bc and not start_year_is_bc and not start_year_is_ad:
+                start_year_is_bc = True
 
             start_year = s_y
             end_year = e_y

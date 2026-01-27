@@ -73,6 +73,20 @@ class EventParser:
             span_year=section.date_range_start if section.date_range_start > 0 else 2000,
             assume_is_bc=section.is_bc_start
         )
+
+        # Determine if we need to fall back to section context
+        used_section_fallback = False
+        fallback_start = None
+        fallback_end = None
+        fallback_is_bc_start = False
+        fallback_is_bc_end = False
+
+        if not span and section.inferred_date_range:
+            fallback_start, fallback_end = section.inferred_date_range
+            # Respect signed years or explicit BC flags on the section
+            fallback_is_bc_start = fallback_start < 0 or section.is_bc_start
+            fallback_is_bc_end = fallback_end < 0 or section.is_bc_end
+            used_section_fallback = True
         
         # Extract Wikipedia links
         wiki_links = self._extract_wiki_links(bullet_text)
@@ -81,10 +95,20 @@ class EventParser:
         citations = self._extract_citations(bullet_text)
         
         # Determine confidence level
-        confidence = self._determine_confidence(span, section)
+        confidence = self._determine_confidence(span, section, used_section_fallback)
+
+        # Log how the date was resolved (explicit/decade/section fallback)
+        self._log_date_resolution(
+            clean_text,
+            section,
+            span,
+            used_section_fallback,
+            fallback_start,
+            fallback_end,
+        )
         
-        # Log undated events
-        if not span:
+        # Log undated events without usable section context
+        if not span and not used_section_fallback:
             self._log_undated_event(clean_text, section)
             # Don't create event for undated items
             return EventParseResult(
@@ -93,19 +117,34 @@ class EventParser:
                 error_message="No date found in text"
             )
         
-        # Create FoodEvent
-        is_circa = span.match_type and "CIRCA" in span.match_type.upper() if span.match_type else False
+        # Build normalized date fields (span or section fallback)
+        if span:
+            start_year = span.start_year
+            end_year = span.end_year
+            is_bc_start = span.start_year_is_bc
+            is_bc_end = span.end_year_is_bc
+            is_circa = span.match_type and "CIRCA" in span.match_type.upper() if span.match_type else False
+            span_match_notes = span.match_type if span.match_type else "UNKNOWN"
+            precision_val = self._calculate_precision(span)
+        else:
+            start_year = fallback_start or 0
+            end_year = fallback_end or 0
+            is_bc_start = fallback_is_bc_start
+            is_bc_end = fallback_is_bc_end
+            is_circa = False
+            span_match_notes = "SECTION_FALLBACK"
+            precision_val = 0.3
         
         event = FoodEvent(
             event_key="",  # Will be generated in __post_init__
             source="Timeline of Food",
-            date_explicit=span.start_year if span.start_year == span.end_year else None,
-            date_range_start=span.start_year,
-            date_range_end=span.end_year,
-            is_bc_start=span.start_year_is_bc,
-            is_bc_end=span.end_year_is_bc,
+            date_explicit=start_year if start_year == end_year else None,
+            date_range_start=start_year,
+            date_range_end=end_year,
+            is_bc_start=is_bc_start,
+            is_bc_end=is_bc_end,
             is_date_approximate=is_circa,
-            is_date_range=span.start_year != span.end_year,
+            is_date_range=start_year != end_year,
             confidence_level=confidence,
             title="",  # Will be generated from description
             description=clean_text,
@@ -115,8 +154,8 @@ class EventParser:
             wikipedia_links=wiki_links,
             external_references=citations,
             source_format=source_format,
-            span_match_notes=span.match_type if span.match_type else "UNKNOWN",
-            precision=self._calculate_precision(span),
+            span_match_notes=span_match_notes,
+            precision=precision_val,
         )
         
         return EventParseResult(
@@ -188,16 +227,19 @@ class EventParser:
         matches = re.findall(r'\[(\d+)\]', text)
         return [int(m) for m in matches]
     
-    def _determine_confidence(self, span: Optional[Span], section: TextSection) -> str:
+    def _determine_confidence(self, span: Optional[Span], section: TextSection, used_section_fallback: bool = False) -> str:
         """Determine confidence level for the date extraction.
         
         Args:
             span: Parsed date span (None if no date found)
             section: Section context
+            used_section_fallback: True if section context supplied the date
         
         Returns:
             Confidence level: "explicit" | "inferred" | "approximate" | "contentious" | "fallback"
         """
+        if used_section_fallback:
+            return "inferred"
         if not span:
             return "fallback"
         
@@ -208,6 +250,9 @@ class EventParser:
         # YEARS_AGO must be checked before YEAR (since "YEAR" is in "YEARS_AGO")
         if span.match_type and "YEARS_AGO" in span.match_type.upper():
             return "approximate"
+
+        if span.match_type and "DECADE" in span.match_type.upper():
+            return "explicit"
         
         # Check if match type is a year format (explicit)
         if span.match_type and "YEAR" in span.match_type.upper():
@@ -219,6 +264,57 @@ class EventParser:
         
         # Default to explicit for matched dates
         return "explicit"
+
+    def _log_date_resolution(
+        self,
+        text: str,
+        section: TextSection,
+        span: Optional[Span],
+        used_section_fallback: bool,
+        fallback_start: int | None,
+        fallback_end: int | None,
+    ) -> None:
+        """Log how the date was resolved for observability.
+
+        Args:
+            text: Cleaned event text
+            section: Section context
+            span: Parsed span if available
+            used_section_fallback: Whether section range was used
+            fallback_start: Section fallback start year
+            fallback_end: Section fallback end year
+        """
+        preview = text[:80]
+
+        if used_section_fallback:
+            logger.info(
+                "Section-inferred date applied %s-%s for '%s' in section '%s'",
+                fallback_start,
+                fallback_end,
+                preview,
+                section.name,
+            )
+            return
+
+        if not span:
+            return
+
+        match = (span.match_type or "UNKNOWN").upper()
+        if "DECADE" in match:
+            logger.info(
+                "Decade-parsed date %s-%s for '%s' in section '%s'",
+                span.start_year,
+                span.end_year,
+                preview,
+                section.name,
+            )
+        else:
+            logger.debug(
+                "Explicit date parsed via %s for '%s' in section '%s'",
+                span.match_type or "UNKNOWN",
+                preview,
+                section.name,
+            )
     
     def _calculate_precision(self, span: Span) -> float:
         """Calculate numeric precision value from span.

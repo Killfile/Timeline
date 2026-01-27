@@ -135,3 +135,35 @@ class TestYearRangeParser:
         assert result is not None
         assert result.start_year == 490
         assert result.end_year == 490
+    
+    def test_bc_bce_range_first_part_unmarked(self):
+        """Test BC/BCE range where only end is marked: '2500–1500 BCE' → both should be BC.
+        
+        Formal logic: end_year_is_bc IMPLIES start_year_is_bc
+        If the end year is marked BC and start year has no explicit marker, 
+        start year should inherit the BC designation.
+        """
+        result = self.parser.parse("2500–1500 BCE", 2500, False)
+        assert result is not None
+        assert result.start_year == 2500
+        assert result.end_year == 1500
+        assert result.start_year_is_bc is True, "Start year should be BC when end year is BC"
+        assert result.end_year_is_bc is True, "End year should be BC"
+    
+    def test_bc_bce_range_with_hyphen(self):
+        """Test BC/BCE range with hyphen: '2500-1500 BCE' → both should be BC."""
+        result = self.parser.parse("2500-1500 BCE", 2500, False)
+        assert result is not None
+        assert result.start_year == 2500
+        assert result.end_year == 1500
+        assert result.start_year_is_bc is True
+        assert result.end_year_is_bc is True
+    
+    def test_bc_range_ancient_dates(self):
+        """Test ancient BC range: '4000–2000 BCE' → both should be BC."""
+        result = self.parser.parse("4000–2000 BCE", 4000, False)
+        assert result is not None
+        assert result.start_year == 4000
+        assert result.end_year == 2000
+        assert result.start_year_is_bc is True
+        assert result.end_year_is_bc is True

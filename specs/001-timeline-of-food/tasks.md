@@ -106,16 +106,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T026 [US2] Extend TextSection dataclass in hierarchical_strategies.py to include inferred_date_range field
-- [ ] T027 [US2] Implement section header date extraction in hierarchical_strategies.py (parse "4000-2000 BCE", "17th Century" from h2/h3/h4 tags)
-- [ ] T027a [US2] Fix YearRangeParser BC/BCE notation bug in `wikipedia-ingestion/span_parsing/year_range_parser.py` - when BC/BCE is on the second part of a range, apply to first part too (e.g., "2500–1500 BCE" → -2500 to -1500, not 2500 to -1500)
-- [ ] T029 [US2] Implement hierarchical date range inheritance in hierarchical_strategies.py (child sections inherit parent ranges)
-- [ ] T030 [US2] Update date_extraction_strategies.py to use section context as fallback when FoodTimelineParseOrchestrator returns None
-- [ ] T031 [US2] Add confidence level "inferred" for events using section-based dates in food_event.py
-- [ ] T032 [US2] Create `wikipedia-ingestion/span_parsing/decade_parser.py` with DecadeParser class (handles "1990s" → 1990-1999, "1800s" → 1800-1809)
-- [ ] T032a [US2] Write unit tests for DecadeParser in `wikipedia-ingestion/span_parsing/tests/test_decade_parser.py` (test all decade patterns: 1000s-2000s, 1800s→1800-1809, 1990s→1990-1999, edge cases, target >80% coverage)
-- [ ] T033 [US2] Update FoodTimelineParseOrchestrator in `wikipedia-ingestion/span_parsing/orchestrators/food_timeline_parse_orchestrator.py` to register and prioritize DecadeParser
-- [ ] T034 [US2] Update logging in date_extraction_strategies.py to distinguish between explicit, section-inferred, and decade-parsed dates
+- [X] T026 [US2] Extend TextSection dataclass in hierarchical_strategies.py to include inferred_date_range field
+- [X] T027 [US2] Implement section header date extraction in hierarchical_strategies.py (parse "4000-2000 BCE", "17th Century" from h2/h3/h4 tags)
+- [X] T027a [US2] Fix YearRangeParser BC/BCE notation bug in `wikipedia-ingestion/span_parsing/year_range_parser.py` - when BC/BCE is on the second part of a range, apply to first part too (e.g., "2500–1500 BCE" → -2500 to -1500, not 2500 to -1500)
+- [X] T029 [US2] Implement hierarchical date range inheritance in hierarchical_strategies.py (child sections inherit parent ranges)
+- [X] T030 [US2] Update date_extraction_strategies.py to use section context as fallback when FoodTimelineParseOrchestrator returns None
+- [X] T031 [US2] Add confidence level "inferred" for events using section-based dates in food_event.py
+- [X] T032 [US2] Create `wikipedia-ingestion/span_parsing/decade_parser.py` with DecadeParser class (handles "1990s" → 1990-1999, "1800s" → 1800-1809)
+- [X] T032a [US2] Write unit tests for DecadeParser in `wikipedia-ingestion/span_parsing/tests/test_decade_parser.py` (test all decade patterns: 1000s-2000s, 1800s→1800-1809, 1990s→1990-1999, edge cases, target >80% coverage)
+- [X] T033 [US2] Update FoodTimelineParseOrchestrator in `wikipedia-ingestion/span_parsing/orchestrators/food_timeline_parse_orchestrator.py` to register and prioritize DecadeParser
+- [X] T034 [US2] Update logging in date_extraction_strategies.py to distinguish between explicit, section-inferred, and decade-parsed dates
 
 **Checkpoint**: User Story 2 complete - decade notation parsed, undated events get section-based date ranges, 1990s→1990-1999, 1800s→1800-1809, BC/BCE ranges handled correctly
 

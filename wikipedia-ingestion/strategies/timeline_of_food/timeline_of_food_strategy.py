@@ -8,9 +8,9 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-import requests
 from bs4 import BeautifulSoup
 
+from ingestion_common import get_html, log_info, log_error
 from strategies.strategy_base import (
     IngestionStrategy,
     FetchResult,
@@ -48,15 +48,13 @@ class TimelineOfFoodStrategy(IngestionStrategy):
             output_dir: Directory for writing artifacts and logs
         """
         super().__init__(run_id, output_dir)
-        self.cache_dir = Path("cache")
-        self.cache_dir.mkdir(exist_ok=True)
-        self.cache_path = self.cache_dir / self.CACHE_FILENAME
         
         self.section_parser = TextSectionParser()
         self.event_parser = EventParser()
         
         # Storage for parsed data
         self.html_content: Optional[str] = None
+        self.canonical_url: Optional[str] = None
         self.sections: list[TextSection] = []
         self.events: list[FoodEvent] = []
     
@@ -65,78 +63,34 @@ class TimelineOfFoodStrategy(IngestionStrategy):
         return "timeline_of_food"
     
     def fetch(self) -> FetchResult:
-        """Fetch the Wikipedia article HTML.
+        """Fetch the Wikipedia article HTML using shared cache framework.
         
-        Downloads the article from Wikipedia with caching support.
-        If cache file exists, loads from cache. Otherwise, makes HTTP request.
+        Uses ingestion_common.get_html() for consistent HTTP caching,
+        retry logic, and content validation across all strategies.
         
         Returns:
             FetchResult with metadata about the fetch operation
         
         Raises:
-            requests.HTTPError: If HTTP request fails (404, 5xx, etc.)
-            requests.Timeout: If request times out
-            requests.RequestException: For other network errors
+            RuntimeError: If fetch fails
         """
-        logger.info(f"Fetching Timeline of Food article from {self.WIKIPEDIA_URL}")
+        log_info(f"Fetching Timeline of Food article from {self.WIKIPEDIA_URL}")
         
-        # Check cache first
-        if self.cache_path.exists():
-            logger.info(f"Loading from cache: {self.cache_path}")
-            self.html_content = self.cache_path.read_text(encoding='utf-8')
-            
-            return FetchResult(
-                strategy_name=self.STRATEGY_NAME,
-                fetch_count=1,
-                fetch_metadata={
-                    "url": self.WIKIPEDIA_URL,
-                    "http_status": 200,
-                    "cache_hit": True,
-                    "cache_file": str(self.cache_path),
-                    "content_length_bytes": len(self.html_content),
-                    "fetch_timestamp_utc": datetime.utcnow().isoformat() + "Z",
-                }
-            )
+        (html, final_url), error = get_html(self.WIKIPEDIA_URL, context="timeline_of_food")
         
-        # Make HTTP request
-        try:
-            response = requests.get(
-                self.WIKIPEDIA_URL,
-                headers={"User-Agent": "Wikipedia Ingestion Bot"},
-                timeout=10
-            )
-            response.raise_for_status()
-            
-        except requests.HTTPError as e:
-            if e.response.status_code == 404:
-                logger.error(f"Article not found: {self.WIKIPEDIA_URL}")
-                raise RuntimeError(f"Wikipedia article not found (404): {self.WIKIPEDIA_URL}") from e
-            else:
-                logger.error(f"HTTP error fetching article: {e}")
-                raise RuntimeError(f"HTTP error {e.response.status_code}: {e}") from e
+        if error or not html.strip():
+            log_error(f"Failed to fetch Timeline of Food article: {error}")
+            raise RuntimeError(f"Failed to fetch article: {error}")
         
-        except requests.Timeout:
-            logger.error(f"Request timed out: {self.WIKIPEDIA_URL}")
-            raise RuntimeError(f"Request timed out after 10 seconds") from None
-        
-        except requests.RequestException as e:
-            logger.error(f"Network error fetching article: {e}")
-            raise RuntimeError(f"Network error: {e}") from e
-        
-        # Save to cache
-        self.html_content = response.text
-        self.cache_path.write_text(self.html_content, encoding='utf-8')
-        logger.info(f"Saved to cache: {self.cache_path}")
+        self.html_content = html
+        self.canonical_url = final_url
         
         return FetchResult(
             strategy_name=self.STRATEGY_NAME,
             fetch_count=1,
             fetch_metadata={
                 "url": self.WIKIPEDIA_URL,
-                "http_status": response.status_code,
-                "cache_hit": False,
-                "cache_file": str(self.cache_path),
-                "content_type": response.headers.get("Content-Type", ""),
+                "final_url": final_url,
                 "content_length_bytes": len(self.html_content),
                 "fetch_timestamp_utc": datetime.utcnow().isoformat() + "Z",
             }
@@ -160,12 +114,12 @@ class TimelineOfFoodStrategy(IngestionStrategy):
         if not self.html_content:
             raise RuntimeError("No HTML content available. Call fetch() first.")
         
-        logger.info("Parsing Timeline of Food article")
+        log_info("Parsing Timeline of Food article")
         parse_start = datetime.utcnow()
         
         # Parse sections
         self.sections = self.section_parser.parse_sections(self.html_content)
-        logger.info(f"Found {len(self.sections)} sections")
+        log_info(f"Found {len(self.sections)} sections")
         
         # Extract events from each section
         soup = BeautifulSoup(self.html_content, 'html.parser')
@@ -186,8 +140,8 @@ class TimelineOfFoodStrategy(IngestionStrategy):
         # Get undated event summary
         undated_summary = self.event_parser.get_undated_summary()
         
-        logger.info(f"Parsed {len(historical_events)} events in {elapsed:.2f}s")
-        logger.info(f"Undated events: {undated_summary['total_undated']}")
+        log_info(f"[{self.name()}] Parsed {len(historical_events)} events in {elapsed:.2f}s")
+        log_info(f"[{self.name()}] Undated events: {undated_summary['total_undated']}")
         
         return ParseResult(
             strategy_name=self.STRATEGY_NAME,
@@ -230,7 +184,7 @@ class TimelineOfFoodStrategy(IngestionStrategy):
                     break
         
         if not header:
-            logger.warning(f"Could not find header for section: {section.name}")
+            log_error(f"Could not find header for section: {section.name}")
             return events
         
         # Get the parent div (mw-heading) and then find siblings
@@ -460,6 +414,6 @@ class TimelineOfFoodStrategy(IngestionStrategy):
         """
         undated_summary = self.event_parser.get_undated_summary()
         if undated_summary['total_undated'] > 0:
-            logger.info(f"Undated events summary: {undated_summary['total_undated']} events without parseable dates")
+            log_info(f"[{self.name()}] Undated events summary: {undated_summary['total_undated']} events without parseable dates")
             for event_info in undated_summary['events'][:10]:  # Log first 10
-                logger.info(f"  - {event_info['section']}: {event_info['text']}")
+                log_info(f"[{self.name()}]   - {event_info['section']}: {event_info['text']}")

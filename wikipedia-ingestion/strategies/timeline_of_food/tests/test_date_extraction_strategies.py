@@ -2,6 +2,7 @@
 Unit tests for EventParser (date_extraction_strategies.py)
 Covers: bullet point parsing, date extraction with orchestrator, logging
 """
+import logging
 import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -15,7 +16,7 @@ from strategies.timeline_of_food.date_extraction_strategies import (
 )
 from strategies.timeline_of_food.hierarchical_strategies import TextSection
 from strategies.timeline_of_food.food_event import FoodEvent
-from span_parsing.span import Span
+from span_parsing.span import Span, SpanPrecision
 
 
 @pytest.fixture
@@ -212,6 +213,11 @@ class TestEventParserConfidenceLevel:
         confidence = event_parser._determine_confidence(span, sample_section)
         assert confidence == "explicit"
 
+    def test_confidence_section_fallback(self, event_parser, sample_section):
+        """Test confidence returns inferred when section context supplies date."""
+        confidence = event_parser._determine_confidence(None, sample_section, used_section_fallback=True)
+        assert confidence == "inferred"
+
 
 class TestEventParserPrecision:
     """Test precision calculation."""
@@ -257,6 +263,55 @@ class TestEventParserLogging:
         event_parser._log_undated_event(long_text, sample_section)
         
         assert len(event_parser.undated_events[0]["text"]) <= 100
+
+    def test_logs_decade_parse_path(self, event_parser, sample_section, caplog):
+        """Log should indicate decade parsing when span match_type includes DECADE."""
+        span = Span(
+            start_year=1990,
+            end_year=1999,
+            start_month=1,
+            start_day=1,
+            end_month=12,
+            end_day=31,
+            start_year_is_bc=False,
+            end_year_is_bc=False,
+            match_type="DECADE",
+            precision=SpanPrecision.YEAR_ONLY,
+        )
+
+        with patch.object(event_parser, "orchestrator") as orchestrator_mock:
+            orchestrator_mock.parse_span_from_bullet.return_value = span
+            with caplog.at_level(logging.INFO):
+                result = event_parser.parse_bullet_point("1990s snacks boom", sample_section)
+
+        assert result.event is not None
+        assert result.event.confidence_level == "explicit"
+        assert any("Decade-parsed" in rec.message for rec in caplog.records)
+
+    def test_logs_section_fallback_path(self, event_parser, caplog):
+        """Section fallback should log inferred resolution and mark confidence inferred."""
+        fallback_section = TextSection(
+            name="4000-2000 BCE",
+            level=2,
+            date_range_start=-4000,
+            date_range_end=-2000,
+            date_is_explicit=True,
+            date_is_range=True,
+            position=0,
+            is_bc_start=True,
+            is_bc_end=True,
+            event_count=0,
+            inferred_date_range=(-4000, -2000),
+        )
+
+        with patch.object(event_parser, "orchestrator") as orchestrator_mock:
+            orchestrator_mock.parse_span_from_bullet.return_value = None
+            with caplog.at_level(logging.INFO):
+                result = event_parser.parse_bullet_point("Earliest bread evidence", fallback_section)
+
+        assert result.event is not None
+        assert result.event.confidence_level == "inferred"
+        assert any("Section-inferred" in rec.message for rec in caplog.records)
 
     def test_get_undated_summary(self, event_parser, sample_section):
         """Test getting undated event summary."""
@@ -310,3 +365,42 @@ class TestEventParserIntegration:
         )
         # Check would require orchestrator parsing to work
         # This is a smoke test that parsing completes
+
+    def test_parse_bullet_uses_section_fallback(self, event_parser):
+        """When orchestrator finds no date, use section inferred range."""
+        fallback_section = TextSection(
+            name="4000-2000 BCE",
+            level=2,
+            date_range_start=-4000,
+            date_range_end=-2000,
+            date_is_explicit=True,
+            date_is_range=True,
+            position=0,
+            is_bc_start=True,
+            is_bc_end=True,
+            event_count=0,
+            inferred_date_range=(-4000, -2000),
+        )
+
+        with patch.object(event_parser, "orchestrator") as orchestrator_mock:
+            orchestrator_mock.parse_span_from_bullet.return_value = None
+            result = event_parser.parse_bullet_point("Earliest bread evidence", fallback_section)
+
+        assert result.has_date is True
+        assert result.event is not None
+        assert result.event.date_range_start == -4000
+        assert result.event.date_range_end == -2000
+        assert result.event.is_bc_start is True
+        assert result.event.is_bc_end is True
+        assert result.event.confidence_level == "inferred"
+        assert result.event.span_match_notes == "SECTION_FALLBACK"
+
+    def test_parse_bullet_no_section_context_still_undated(self, event_parser, sample_section):
+        """If no span and no section range, keep event undated."""
+        with patch.object(event_parser, "orchestrator") as orchestrator_mock:
+            orchestrator_mock.parse_span_from_bullet.return_value = None
+            sample_section.inferred_date_range = None
+            result = event_parser.parse_bullet_point("Event without date", sample_section)
+
+        assert result.has_date is False
+        assert result.event is None
