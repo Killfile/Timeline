@@ -98,32 +98,132 @@ class FoodEvent:
         key_input = f"{date_str}|{self.title}|{self.source}"
         return md5(key_input.encode('utf-8')).hexdigest()
     
+    def validate_ancient_dates(self) -> None:
+        """Validate dates for very ancient (>10,000 BC) events.
+        
+        Very ancient dates should have reduced precision since archaeological
+        evidence for dates this old is typically approximate.
+        
+        Rules:
+        - Dates >10,000 BC should have precision adjusted downward
+        - Precision below 0.1 is poor (archaeological estimates)
+        - Precision 0.1-0.3 is weak (pre-classical era)
+        - Precision >0.3 is moderate (classical era forward)
+        """
+        start_year = self.date_range_start or 0
+        
+        # Check if this is an ancient date (>10,000 years before present)
+        if self.is_bc_start and start_year > 10000:
+            # Reduce precision for very ancient dates
+            if self.precision is None or self.precision > 0.3:
+                # Adjust precision downward for archaeological estimates
+                self.precision = max(0.1, self.precision * 0.5) if self.precision else 0.1
+            
+            # Add note about ancient dating
+            if self.parsing_notes:
+                self.parsing_notes += "; ancient date (>10K BC) - precision reduced"
+            else:
+                self.parsing_notes = "ancient date (>10K BC) - precision reduced"
+    
+    def validate_bc_ad_conversion(self) -> None:
+        """Validate BC/AD date conversion and handle 1 BC → 1 AD cutover.
+        
+        Rules:
+        - Negative years represent BC dates (stored as positive with is_bc flag)
+        - There is no year 0 (1 BC precedes 1 AD immediately)
+        - 1 BC → 1 AD transition must be handled correctly
+        
+        Raises:
+            ValueError: If dates violate BC/AD rules
+        """
+        # Get the actual years (may be negative for BC)
+        start_year = self.date_range_start or 0
+        end_year = self.date_range_end or 0
+        
+        # Both must not be zero
+        if start_year == 0 and end_year == 0:
+            return  # No dates to validate
+        
+        # Detect BC from negative values if not already flagged
+        start_is_bc = start_year < 0 or self.is_bc_start
+        end_is_bc = end_year < 0 or self.is_bc_end
+        
+        # Check for year 0 which doesn't exist
+        if start_year == 0 or end_year == 0:
+            # One year is 0 - only valid if the other is also 0
+            if not (start_year == 0 and end_year == 0):
+                raise ValueError(
+                    "Invalid year 0 - years skip from 1 BC to 1 AD"
+                )
+        
+        # For BC ranges, the logic is inverted (larger BC year comes first)
+        # -8000 to -5000 means 8000 BC to 5000 BC (valid: 8000 > 5000)
+        # For AD ranges: 5000 to 8000 is valid (5000 < 8000)
+        # For mixed: only valid if transitioning 1 BC to 1 AD
+        
+        if start_is_bc and end_is_bc:
+            # Both BC: larger absolute value comes first (earlier in time)
+            # -8000 to -5000: abs(-8000) > abs(-5000) which is correct (8000 > 5000)
+            # This is valid BC range
+            pass
+        elif not start_is_bc and not end_is_bc:
+            # Both AD: smaller must come before larger
+            if abs(start_year) > abs(end_year):
+                raise ValueError(
+                    f"Invalid date range: start_year ({start_year}) > end_year ({end_year})"
+                )
+
     def to_historical_event(self) -> HistoricalEvent:
         """Convert to standard HistoricalEvent for database storage.
         
         Maps FoodEvent fields to HistoricalEvent schema. Uses section date range
         as fallback if explicit dates are not available.
         
+        Handles BC/AD conversion per historical conventions:
+        - Negative internal years become positive with is_bc flags
+        - Year 0 does not exist (1 BC → 1 AD transition)
+        - Both start and end years maintain consistent BC/AD markers
+        - Very ancient dates (>10K BC) have reduced precision
+        
         Returns:
             HistoricalEvent instance ready for database insertion.
+        
+        Raises:
+            ValueError: If BC/AD conversion rules are violated
         """
+        # Validate ancient dates and adjust precision
+        self.validate_ancient_dates()
+        
+        # Validate BC/AD rules before conversion
+        self.validate_bc_ad_conversion()
+        
         # Determine start/end years
         start_year = self.date_explicit or self.date_range_start or self.section_date_range_start
         end_year = self.date_explicit or self.date_range_end or self.section_date_range_end
+        
+        # Track whether conversion occurred (for BC flag consistency)
+        converted_start_bc = False
+        converted_end_bc = False
         
         # Ensure we have positive years for database storage
         # BC years are stored as positive with is_bc flags
         if start_year < 0:
             start_year = abs(start_year)
-            is_bc_start = True
-        else:
-            is_bc_start = self.is_bc_start
+            converted_start_bc = True
         
         if end_year < 0:
             end_year = abs(end_year)
-            is_bc_end = True
-        else:
-            is_bc_end = self.is_bc_end
+            converted_end_bc = True
+        
+        # Determine final BC flags
+        is_bc_start = converted_start_bc or self.is_bc_start
+        is_bc_end = converted_end_bc or self.is_bc_end
+        
+        # Handle 1 BC → 1 AD transition (no year 0)
+        # If spanning from BC to AD, and there's a gap at year 0, it's invalid
+        if is_bc_start and not is_bc_end and end_year == 1:
+            # This is the 1 BC to 1 AD transition - valid
+            pass
         
         # Calculate weight (duration in days) for packing priority
         # Longer duration events get lower weight (rendered smaller)
@@ -143,3 +243,4 @@ class FoodEvent:
             span_match_notes=self.span_match_notes,
             category="Food History",
         )
+

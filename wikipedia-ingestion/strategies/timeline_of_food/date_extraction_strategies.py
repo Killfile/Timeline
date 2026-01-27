@@ -79,6 +79,13 @@ class EventParser:
             span_year=self.anchor_year,
             assume_is_bc=section.is_bc_start
         )
+        
+        # If no date found at the start, try to extract embedded date from description
+        embedded_span = None
+        if not span:
+            embedded_span = self._extract_embedded_date(clean_text)
+            if embedded_span:
+                span = embedded_span
 
         # Determine if we need to fall back to section context
         used_section_fallback = False
@@ -240,6 +247,63 @@ class EventParser:
         # Match [1], [2], etc.
         matches = re.findall(r'\[(\d+)\]', text)
         return [int(m) for m in matches]
+    
+    def _extract_embedded_date(self, text: str) -> Optional[Span]:
+        """Extract embedded dates from within description text.
+        
+        Some descriptions contain parenthetical dates like:
+        "Discovery of new crop (1750)" or "Early cultivation, ~2000 BC"
+        
+        Tries to find and parse dates embedded anywhere in the text,
+        prioritizing parenthetical and inline date patterns.
+        
+        Args:
+            text: Full description text that may contain embedded dates
+        
+        Returns:
+            Span if embedded date found, None otherwise
+        """
+        # Pattern 1: Parenthetical dates like (1750), (1800-1900), (2000 BCE)
+        paren_matches = re.finditer(r'\(([^)]*(?:\d{1,4})[^)]*)\)', text)
+        for match in paren_matches:
+            date_text = match.group(1).strip()
+            # Try to parse the parenthetical content as a date
+            result = self.orchestrator.parse_span_from_bullet(
+                date_text,
+                span_year=self.anchor_year,
+                assume_is_bc=False
+            )
+            if result:
+                return result
+        
+        # Pattern 2: Look for comma-separated dates like "Discovery, 1750,"
+        # Extract potential date chunks (numbers followed by possible BC/AD)
+        date_chunks = re.finditer(r',\s*(\d{1,4}(?:s)?(?:\s+(?:BC|BCE|AD|CE))?)\s*[,.]', text)
+        for match in date_chunks:
+            date_text = match.group(1).strip()
+            result = self.orchestrator.parse_span_from_bullet(
+                date_text,
+                span_year=self.anchor_year,
+                assume_is_bc=False
+            )
+            if result:
+                return result
+        
+        # Pattern 3: General year ranges within text
+        # Look for patterns like "between 1000 and 1500" or "from 2000 BCE to 1500 BCE"
+        range_pattern = r'(?:between|from|around|~|circa)\s+([0-9\s\-–—BCE/AD]+)'
+        range_matches = re.finditer(range_pattern, text, flags=re.IGNORECASE)
+        for match in range_matches:
+            date_text = match.group(1).strip()
+            result = self.orchestrator.parse_span_from_bullet(
+                date_text,
+                span_year=self.anchor_year,
+                assume_is_bc=False
+            )
+            if result:
+                return result
+        
+        return None
     
     def _determine_confidence(self, span: Optional[Span], section: TextSection, used_section_fallback: bool = False, is_contentious: bool = False) -> str:
         """Determine confidence level for the date extraction.
