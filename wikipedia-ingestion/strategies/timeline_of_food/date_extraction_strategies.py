@@ -205,16 +205,16 @@ class EventParser:
         if span.match_type and "CIRCA" in span.match_type.upper():
             return "approximate"
         
+        # YEARS_AGO must be checked before YEAR (since "YEAR" is in "YEARS_AGO")
+        if span.match_type and "YEARS_AGO" in span.match_type.upper():
+            return "approximate"
+        
         # Check if match type is a year format (explicit)
         if span.match_type and "YEAR" in span.match_type.upper():
             return "explicit"
         
         # Century formats are approximate
         if span.match_type and "CENTURY" in span.match_type.upper():
-            return "approximate"
-        
-        # YEARS_AGO is approximate
-        if span.match_type and "YEARS_AGO" in span.match_type.upper():
             return "approximate"
         
         # Default to explicit for matched dates
