@@ -2,7 +2,7 @@
 
 **Purpose**: Verify that table row dates with decade notation and BC/BCE ranges work correctly after User Story 2 implementation
 
-**Status**: Pending (Tasks T027a, T032, T032a, T033)
+**Status**: In Progress (T027a, T032/T032a implemented; Cases 1 & 3 validated)
 
 **Note**: These test cases depend on User Story 2 features:
 - T027a: BC/BCE range notation fix in YearRangeParser
@@ -12,22 +12,22 @@
 ## Test Cases from User Story 1 Validation
 
 ### Case 1: Decade Notation "1800s" (Depends on T032/T032a)
-- [ ] **Description**: "New potato varieties are brought from Chile to Europe, in an attempt..."
-- [ ] **Table column 1**: "1800s"
-- [ ] **Expected start_year**: 1800
-- [ ] **Expected end_year**: 1809
-- [ ] **Expected span_match_notes**: Should indicate DecadeParser match
-- [ ] **Expected parsing_notes**: Should note decade notation interpretation
-- [ ] **Status**: ⏳ BLOCKED - Requires DecadeParser (T032, T032a)
+- [X] **Description**: "New potato varieties are brought from Chile to Europe, in an attempt..."
+- [X] **Table column 1**: "1800s"
+- [X] **Expected start_year**: 1800
+- [X] **Expected end_year**: 1809
+- [X] **Expected span_match_notes**: Should indicate DecadeParser match
+- [X] **Expected parsing_notes**: Should note decade notation interpretation
+- [X] **Status**: ✅ PASSING
 
 ### Case 3: Decade Notation "1990s" (Depends on T032/T032a)
-- [ ] **Description**: "Goldschläger, a gold-infused cinnamon schnapps based on goldwasser..."
-- [ ] **Table column 1**: "1990s"
-- [ ] **Expected start_year**: 1990
-- [ ] **Expected end_year**: 1999
-- [ ] **Expected span_match_notes**: Should indicate DecadeParser match
-- [ ] **Expected parsing_notes**: Should note decade notation interpretation
-- [ ] **Status**: ⏳ BLOCKED - Requires DecadeParser (T032, T032a)
+- [X] **Description**: "Goldschläger, a gold-infused cinnamon schnapps based on goldwasser..."
+- [X] **Table column 1**: "1990s"
+- [X] **Expected start_year**: 1990
+- [X] **Expected end_year**: 1999
+- [X] **Expected span_match_notes**: Should indicate DecadeParser match
+- [X] **Expected parsing_notes**: Should note decade notation interpretation
+- [X] **Status**: ✅ PASSING
 
 ## Additional Test Cases for User Story 2
 
@@ -58,11 +58,11 @@
 - [X] Add test cases for all BC/BCE range combinations
 
 ### For T032/T032a (DecadeParser):
-- [ ] Create DecadeParser class to match "####s" pattern
-- [ ] Parse "1990s" → (1990, 1999)
-- [ ] Parse "1800s" → (1800, 1809) per specification
-- [ ] Handle edge cases: 1000s, 2000s, etc.
-- [ ] Integrate with FoodTimelineParseOrchestrator
+- [X] Create DecadeParser class to match "####s" pattern
+- [X] Parse "1990s" → (1990, 1999)
+- [X] Parse "1800s" → (1800, 1809) per specification
+- [X] Handle edge cases: 1000s, 2000s, etc.
+- [X] Integrate with FoodTimelineParseOrchestrator
 
 ### For T033 (Logging Updates):
 - [ ] Log decade-parsed dates with specific notation
@@ -73,8 +73,8 @@
 ## Testing Requirements (User Story 2)
 
 	- [X] Unit tests for YearRangeParser BC/BCE handling (T027a)
-- [ ] Unit tests for DecadeParser all decade patterns (T032a)
-- [ ] Integration tests for Case 1, 3, 4, 5 producing correct dates
+- [X] Unit tests for DecadeParser all decade patterns (T032a)
+- [X] Integration tests for Case 1, 3, 4, 5 producing correct dates
 - [ ] Verify logging output distinguishes decade vs explicit dates
 - [ ] Verify BC/BCE ranges have correct negative years
 

@@ -2,9 +2,9 @@
 
 **Purpose**: Verify that table row dates are correctly extracted from first column and used for event dating
 
-**Status**: In Progress (Tasks T025b, T025c) - User Story 1 MVP
+**Status**: Complete (Cases 1–3 validated; decade notation confirmed)
 
-**Note**: Cases 1 and 3 depend on User Story 2 features (DecadeParser, BC/BCE range notation). See `table_date_extraction_us2.md` for full validation.
+**Note**: Decade notation (Cases 1 and 3) now validated with DecadeParser; see `table_date_extraction_us2.md` for extended notes.
 
 ## Expected Behavior
 
@@ -22,20 +22,20 @@ Table events should use the date from the **first column** of the table row for 
 - [X] **Status**: ✅ PASSING
 
 ### Case 1: Decade Notation (User Story 2 - Depends on T032/T032a)
-- [ ] **Description**: "New potato varieties are brought from Chile to Europe, in an attempt..."
-- [ ] **Table column 1**: "1800s" 
-- [ ] **Expected start_year**: 1800
-- [ ] **Expected end_year**: 1809
-- [ ] **Expected span_match_notes**: Should indicate decade parse
-- [ ] **Status**: ⏳ BLOCKED - Requires DecadeParser (T032, T032a)
+- [X] **Description**: "New potato varieties are brought from Chile to Europe, in an attempt..."
+- [X] **Table column 1**: "1800s" 
+- [X] **Expected start_year**: 1800
+- [X] **Expected end_year**: 1809
+- [X] **Expected span_match_notes**: Should indicate decade parse
+- [X] **Status**: ✅ PASSING
 
 ### Case 3: Decade Notation 1990s (User Story 2 - Depends on T032/T032a)
-- [ ] **Description**: "Goldschläger, a gold-infused cinnamon schnapps based on goldwasser..."
-- [ ] **Table column 1**: "1990s"
-- [ ] **Expected start_year**: 1990
-- [ ] **Expected end_year**: 1999
-- [ ] **Expected span_match_notes**: Should indicate decade parse
-- [ ] **Status**: ⏳ BLOCKED - Requires DecadeParser (T032, T032a)
+- [X] **Description**: "Goldschläger, a gold-infused cinnamon schnapps based on goldwasser..."
+- [X] **Table column 1**: "1990s"
+- [X] **Expected start_year**: 1990
+- [X] **Expected end_year**: 1999
+- [X] **Expected span_match_notes**: Should indicate decade parse
+- [X] **Status**: ✅ PASSING
 
 ## Implementation Requirements (User Story 1)
 

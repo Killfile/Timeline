@@ -113,6 +113,7 @@ Data refreshes (atomic reimport) MUST preserve enrichments using deterministic e
 - Run all tests locally as part of any changes
 - Changes to code under test coverage MUST include test updates
 - Prefer parameterized tests over multiple asserts in single test
+- When marking tasks complete, update all relevant validation checklists to reflect current status; checklist upkeep is part of task completion
 
 ## Governance
 
