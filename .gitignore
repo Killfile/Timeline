@@ -52,3 +52,6 @@ frontend/timeline.js.backup
 frontend/candidate_*/*
 */SPEC.md
 wikipedia-ingestion/artifacts/*.json
+
+# Mac Stuff
+.DS_Store
