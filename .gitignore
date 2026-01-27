@@ -34,6 +34,9 @@ data/
 *.log
 logs/
 cache/
+
+# Temporary tools and debug scripts
+temp_tools/
 wikipedia-ingestion/REFACTORING_SUMMARY.md
 wikipedia-ingestion/future_revisions.md
 frontend/future_revisions.md

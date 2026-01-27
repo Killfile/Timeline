@@ -94,14 +94,15 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Use type hints for function parameters and return values.
 - Use dictionaries or data classes for structured data rather than tuples or lists.
 - When running python tests or any local python code, ALWAYS run them in a virtual environment to avoid dependency conflicts.
+- You *never* need to spin up a python http.server locally. If you need a server, use docker.
 
 ### Frontend (JS)
 
 - When adding significant frontend logic, add tests using whatever test framework exists in the repo.
   - If no test framework is present, keep changes small and propose adding one separately.
+- Currently the canonical frontend application is in `frontend/candidate/`. When making changes to the frontend, ensure that the changes are made in the correct directory.
 
 ## API & DB changes
-
 - When adding API routes or DB schema changes:
   - update docs/README if user-facing behavior changes
   - validate backwards compatibility where reasonable
@@ -117,8 +118,15 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 
 - The frontend runs on http://localhost:3000 by default.
 - The API runs on http://localhost:8000 by default.
+- For testing wars ingestion logic, use: `python ingest_wikipedia.py wars`
+- If you need to create temporary tools or debug scripts, place them in a `temp_tools/` directory at the repo root and do not commit them to version control.
 
-# Database and migrations
+## Git
+
+- Leave git operations to the user.
+- Do not issue git commands in agentic mode or suggest git commands unless explicitly asked.
+
+## Database and migrations
 - Don't bother attempting to modify data in place; we will destroy and recreate as needed.
 
 ## How dates work
