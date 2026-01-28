@@ -1,5 +1,7 @@
 """Strategy pattern for parsing different war table row structures."""
 
+from __future__ import annotations
+
 import re
 from abc import ABC, abstractmethod
 from typing import Optional

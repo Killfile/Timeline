@@ -12,7 +12,7 @@ import os
 import time
 from pathlib import Path
 
-from event_key import compute_event_key
+from timeline_common.event_key import compute_event_key
 from span_parsing.span import SpanEncoder
 
 # psycopg2 is only required for DB IO (not for HTML parsing/unit tests).

@@ -4,6 +4,8 @@ This module defines the FoodEvent dataclass which represents a single food-relat
 historical event extracted from the Wikipedia "Timeline of Food" article.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from hashlib import md5
 

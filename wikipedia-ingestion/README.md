@@ -294,6 +294,42 @@ WIKIPEDIA_INGEST_STRATEGY=bespoke_events docker-compose run --rm wikipedia-inges
 }
 ```
 
+#### 4. Timeline of Roman History (`timeline_of_roman_history`)
+
+Extracts historical events from Wikipedia's [Timeline of Roman History](https://en.wikipedia.org/wiki/Timeline_of_Roman_history) article.
+
+**Features:**
+- Parses Wikipedia wikitable format with complex row structures
+- Handles rowspan inheritance (year cells spanning multiple rows)
+- Extracts and normalizes dates with BC/AD notation
+- Assigns confidence levels based on parsing method and historical period
+- Distinguishes legendary events (pre-753 BC) from documented history
+- Comprehensive error handling for malformed table cells
+
+**Architecture:**
+- `TableRowDateParser`: Multi-strategy date parser supporting 8+ date formats
+- `RomanEvent`: Domain model with confidence assignment and event key computation
+- `TimelineOfRomanHistoryStrategy`: Full ingestion pipeline with caching
+
+**Usage:**
+```bash
+WIKIPEDIA_INGEST_STRATEGY=timeline_of_roman_history docker-compose run --rm wikipedia-ingestion
+```
+
+**Configuration:**
+```
+WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/Timeline_of_Roman_history"
+(hardcoded - no environment variable needed)
+```
+
+**Documentation:**
+- See [Timeline of Roman History Strategy README](strategies/timeline_of_roman_history/README.md) for:
+  - Architectural overview and data flow
+  - Design decisions (rowspan handling, legendary dates, etc.)
+  - Confidence level assignment rules
+  - Edge cases handled (BC-to-AD transitions, alternate date formats, etc.)
+  - Usage examples and integration patterns
+
 ### Creating New Strategies
 
 1. **Implement the interface:**
