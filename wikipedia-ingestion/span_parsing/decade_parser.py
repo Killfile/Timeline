@@ -34,21 +34,30 @@ class DecadeParser(SpanParserStrategy):
         # Match decade patterns: 4-digit year ending in 0 followed by 's'
         # Must be at the start of text and not part of a larger word
         m = re.match(
-            r"^\s*(\d{3}0)s\b",
+            r"^\s*(\d{3}0)s(?:\s*(BC|BCE))?\b",
             text,
             flags=re.IGNORECASE
         )
-        
+
         if not m:
             return None
-        
+
         decade_start = int(m.group(1))
-        decade_end = decade_start + 9
+        is_bc = bool(m.group(2)) or page_bc
+
+        if is_bc:
+            # For BC, decades count backwards: e.g., "1990s BC" = 1999 BC to 1990 BC
+            decade_end = decade_start
+            decade_start = decade_start + 9
+            print(f"Decade BC detected: start {decade_start} to {decade_end} end")
+        else:
+            # AD/CE: e.g., "1990s" = 1990 to 1999
+            decade_end = decade_start + 9
         
         # Decades are always AD/CE (not BC)
         # Unless explicitly in a BC context page (which would be very rare)
         # Decades should not inherit page-level BC context; keep AD/CE by default
-        is_bc = False
+
         
         span = Span(
             start_year=decade_start,

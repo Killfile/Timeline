@@ -12,7 +12,7 @@ class TestDecadeParser:
         """Set up test fixtures."""
         self.parser = DecadeParser()
     
-    # Basic decade patterns
+    # Basic decade patternsP
     
     def test_parse_1990s(self):
         """Test parsing 1990s → 1990-1999."""
@@ -22,6 +22,16 @@ class TestDecadeParser:
         assert result.end_year == 1999
         assert result.start_year_is_bc is False
         assert result.end_year_is_bc is False
+        assert result.precision == SpanPrecision.YEAR_ONLY
+
+    def test_parse_1990s_bc(self):
+        """Test parsing 1990s on a BC page → 1990-1999 AD."""
+        result = self.parser.parse("1990s", 1990, True)
+        assert result is not None
+        assert result.start_year == 1999
+        assert result.end_year == 1990
+        assert result.start_year_is_bc is True
+        assert result.end_year_is_bc is True
         assert result.precision == SpanPrecision.YEAR_ONLY
     
     def test_parse_1800s(self):
@@ -99,11 +109,11 @@ class TestDecadeParser:
     # Page context handling
     
     def test_parse_with_page_bc_context(self):
-        """Decade notation should not inherit BC context from the page."""
+        """Decade notation inherits BC context from the page."""
         result = self.parser.parse("1500s", 1500, True)
         assert result is not None
-        assert result.start_year_is_bc is False
-        assert result.end_year_is_bc is False
+        assert result.start_year_is_bc is True
+        assert result.end_year_is_bc is True
     
     def test_parse_with_page_ad_context(self):
         """Test that page AD context does not affect decade parsing."""

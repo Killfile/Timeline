@@ -208,7 +208,7 @@ class TimelineOfFoodStrategy(IngestionStrategy):
                     bullet_text = li.get_text(strip=True)
                     
                     result = self.event_parser.parse_bullet_point(
-                        bullet_html,
+                        bullet_text,
                         section,
                         source_format="bullet"
                     )

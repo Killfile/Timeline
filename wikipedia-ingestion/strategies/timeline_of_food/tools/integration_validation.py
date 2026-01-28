@@ -9,7 +9,6 @@ Verifies that:
 """
 
 import sys
-import json
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
@@ -83,7 +82,6 @@ def validate_date_parsing_success(events: list) -> dict:
 def validate_date_format_diversity(format_counts: dict) -> bool:
     """Verify that multiple date format types are represented."""
     # Expect at least 5 different date format types
-    min_format_types = 5
     expected_formats = {
         "EXPLICIT_YEAR",
         "YEAR_RANGE",
@@ -92,11 +90,7 @@ def validate_date_format_diversity(format_counts: dict) -> bool:
         "explicit"  # For HistoricalEvent confidence level
     }
     
-    actual_formats = set(format_counts.keys())
-    # Match either specific span_match_notes or confidence levels
-    found_formats = (expected_formats & actual_formats) or len(actual_formats) >= min_format_types
-    
-    return len(format_counts) >= min_format_types
+    return len(format_counts) >= len(expected_formats)
 
 
 def validate_bc_ad_handling(events: list) -> dict:

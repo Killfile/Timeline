@@ -72,6 +72,7 @@ class TestTimelineOfFoodStrategyFetch:
             mock_get_html.return_value = (("<html><body>Cached content</body></html>", "https://en.wikipedia.org/wiki/Timeline_of_food"), None)
             
             result = strategy.fetch()
+            assert result is not None
             
             # get_html should be called (it handles caching internally)
             mock_get_html.assert_called_once()

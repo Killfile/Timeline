@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 from span_parsing.orchestrators.food_timeline_parse_orchestrator import FoodTimelineParseOrchestrator
 from span_parsing.span import Span

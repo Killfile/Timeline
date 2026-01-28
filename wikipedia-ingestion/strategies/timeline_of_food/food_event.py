@@ -6,7 +6,6 @@ historical event extracted from the Wikipedia "Timeline of Food" article.
 
 from dataclasses import dataclass, field
 from hashlib import md5
-from typing import Any
 
 from historical_event import HistoricalEvent
 
@@ -113,7 +112,7 @@ class FoodEvent:
         start_year = self.date_range_start or 0
         
         # Check if this is an ancient date (>10,000 years before present)
-        if self.is_bc_start and start_year > 10000:
+        if self.is_bc_start and abs(start_year) > 10000:
             # Reduce precision for very ancient dates
             if self.precision is None or self.precision > 0.3:
                 # Adjust precision downward for archaeological estimates
@@ -137,24 +136,17 @@ class FoodEvent:
             ValueError: If dates violate BC/AD rules
         """
         # Get the actual years (may be negative for BC)
-        start_year = self.date_range_start or 0
-        end_year = self.date_range_end or 0
+        start_year = int(self.date_explicit or self.date_range_start or self.section_date_range_start or 0)
+        end_year = int(self.date_explicit or self.date_range_end or self.section_date_range_end or 0)
         
         # Both must not be zero
-        if start_year == 0 and end_year == 0:
-            return  # No dates to validate
+        if start_year == 0 or end_year == 0:
+            raise ValueError("Invalid year 0")
         
         # Detect BC from negative values if not already flagged
         start_is_bc = start_year < 0 or self.is_bc_start
         end_is_bc = end_year < 0 or self.is_bc_end
         
-        # Check for year 0 which doesn't exist
-        if start_year == 0 or end_year == 0:
-            # One year is 0 - only valid if the other is also 0
-            if not (start_year == 0 and end_year == 0):
-                raise ValueError(
-                    "Invalid year 0 - years skip from 1 BC to 1 AD"
-                )
         
         # For BC ranges, the logic is inverted (larger BC year comes first)
         # -8000 to -5000 means 8000 BC to 5000 BC (valid: 8000 > 5000)
@@ -193,10 +185,10 @@ class FoodEvent:
         """
         # Validate ancient dates and adjust precision
         self.validate_ancient_dates()
-        
+
         # Validate BC/AD rules before conversion
         self.validate_bc_ad_conversion()
-        
+
         # Determine start/end years
         start_year = self.date_explicit or self.date_range_start or self.section_date_range_start
         end_year = self.date_explicit or self.date_range_end or self.section_date_range_end

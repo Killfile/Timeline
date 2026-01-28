@@ -353,6 +353,7 @@ class TestEventParserIntegration:
     def test_parse_bullet_source_format_bullet(self, event_parser, sample_section):
         """Test that source_format defaults to 'bullet'."""
         result = event_parser.parse_bullet_point("1847: Test event", sample_section)
+        assert result is not None
         # Check would require orchestrator parsing to work
         # This is a smoke test that parsing completes
 
@@ -363,6 +364,7 @@ class TestEventParserIntegration:
             sample_section,
             source_format="table"
         )
+        assert result is not None
         # Check would require orchestrator parsing to work
         # This is a smoke test that parsing completes
 
