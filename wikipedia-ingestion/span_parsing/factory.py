@@ -26,6 +26,13 @@ class SpanParsers(Enum):
     YEAR_ONLY = auto()
     FALLBACK = auto()
     CIRCA_YEAR = auto()
+    # New parsers for Timeline of Food
+    CENTURY = auto()
+    CENTURY_RANGE = auto()
+    CENTURY_WITH_MODIFIER = auto()
+    YEARS_AGO = auto()
+    TILDE_CIRCA_YEAR = auto()
+    DECADE = auto()
 
 
 class SpanParserFactory:
@@ -65,6 +72,13 @@ class SpanParserFactory:
         from span_parsing.parenthesized_short_year_range_parser import ParenthesizedShortYearRangeParser
         from span_parsing.parenthesized_mirrored_era_year_range_parser import ParenthesizedMirroredEraYearRangeParser
         from span_parsing.parenthesized_decade_range_parser import ParenthesizedDecadeRangeParser
+        # New parsers for Timeline of Food
+        from span_parsing.century_parser import CenturyParser
+        from span_parsing.century_range_parser import CenturyRangeParser
+        from span_parsing.century_with_modifier_parser import CenturyWithModifierParser
+        from span_parsing.years_ago_parser import YearsAgoParser
+        from span_parsing.tilde_circa_year_parser import TildeCircaYearParser
+        from span_parsing.decade_parser import DecadeParser
 
         if strategy == SpanParsers.MONTH_AND_DAY_RANGE_WITHIN_PAGE_SPAN_ACROSS_YEARS:
             return MultiYearMonthAndDayRangeParser()
@@ -106,5 +120,17 @@ class SpanParserFactory:
             return FallbackSpanParser()
         elif strategy == SpanParsers.CIRCA_YEAR:
             return CircaYearParser()
+        elif strategy == SpanParsers.CENTURY:
+            return CenturyParser()
+        elif strategy == SpanParsers.CENTURY_RANGE:
+            return CenturyRangeParser()
+        elif strategy == SpanParsers.CENTURY_WITH_MODIFIER:
+            return CenturyWithModifierParser()
+        elif strategy == SpanParsers.YEARS_AGO:
+            return YearsAgoParser()
+        elif strategy == SpanParsers.TILDE_CIRCA_YEAR:
+            return TildeCircaYearParser()
+        elif strategy == SpanParsers.DECADE:
+            return DecadeParser()
         else:
             raise ValueError(f"Unknown strategy: {strategy}")

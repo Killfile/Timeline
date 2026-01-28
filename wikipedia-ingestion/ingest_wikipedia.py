@@ -30,7 +30,7 @@ try:
     # ingestion_list_of_years.py has been consolidated into strategies/list_of_years/list_of_years_strategy.py
     # Legacy helper for backward compatibility
     
-    
+
 except ImportError:  # pragma: no cover
     from ingestion_common import log_error, log_info
     from strategies.ingestion_strategy_factory import IngestionStrategyFactory, IngestionStrategies

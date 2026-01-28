@@ -1,0 +1,252 @@
+{
+  "metadata": {
+    "description": "Expected events for Timeline of Food fixture tests",
+    "source": "Timeline of Food",
+    "fixture_version": "1.0"
+  },
+  "test_cases": [
+    {
+      "name": "explicit_year_1847",
+      "html": "BULLET_EXPLICIT_YEAR",
+      "expected": {
+        "date_explicit": 1847,
+        "date_range_start": null,
+        "date_range_end": null,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "One of America's first candy-making machines invented",
+        "confidence_level": "explicit",
+        "span_match_notes": "EXPLICIT_YEAR"
+      }
+    },
+    {
+      "name": "year_range_1500_1600",
+      "html": "BULLET_YEAR_RANGE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": 1500,
+        "date_range_end": 1600,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "New World crops like potatoes and maize arrive",
+        "confidence_level": "explicit",
+        "span_match_notes": "YEAR_RANGE"
+      }
+    },
+    {
+      "name": "decade_1990s",
+      "html": "BULLET_DECADE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": 1990,
+        "date_range_end": 1999,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "Goldschläger cinnamon schnapps becomes popular",
+        "confidence_level": "explicit",
+        "span_match_notes": "DECADE"
+      }
+    },
+    {
+      "name": "century_19th",
+      "html": "BULLET_CENTURY",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": 1801,
+        "date_range_end": 1900,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "Factory-based food production increases",
+        "confidence_level": "explicit",
+        "span_match_notes": "CENTURY"
+      }
+    },
+    {
+      "name": "century_range_15th_17th",
+      "html": "BULLET_CENTURY_RANGE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": 1401,
+        "date_range_end": 1700,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "Global spice trade flourishes",
+        "confidence_level": "explicit",
+        "span_match_notes": "CENTURY_RANGE"
+      }
+    },
+    {
+      "name": "bce_range_8000_5000",
+      "html": "BULLET_BCE_RANGE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -8000,
+        "date_range_end": -5000,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Agricultural revolution begins in the Fertile Crescent",
+        "confidence_level": "explicit",
+        "span_match_notes": "YEAR_RANGE"
+      }
+    },
+    {
+      "name": "years_ago_250k",
+      "html": "BULLET_YEARS_AGO",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -248000,
+        "date_range_end": -248000,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Evidence suggests controlled use of fire",
+        "confidence_level": "explicit",
+        "span_match_notes": "YEARS_AGO",
+        "parsing_notes_contains": "ancient date"
+      }
+    },
+    {
+      "name": "tilde_approximate_1450",
+      "html": "BULLET_TILDE",
+      "expected": {
+        "date_explicit": 1450,
+        "date_range_start": null,
+        "date_range_end": null,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "is_date_approximate": true,
+        "title": "Gutenberg's printing press invented",
+        "confidence_level": "approximate",
+        "span_match_notes": "TILDE_YEAR"
+      }
+    },
+    {
+      "name": "circa_1516",
+      "html": "BULLET_CIRCA",
+      "expected": {
+        "date_explicit": 1516,
+        "date_range_start": null,
+        "date_range_end": null,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "is_date_approximate": true,
+        "title": "Corn brought from Americas to Portugal",
+        "confidence_level": "approximate",
+        "span_match_notes": "CIRCA_YEAR"
+      }
+    },
+    {
+      "name": "contentious_1673",
+      "html": "BULLET_CONTENTIOUS",
+      "expected": {
+        "date_explicit": 1673,
+        "date_range_start": null,
+        "date_range_end": null,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "Chocolate first used in chocolate cake",
+        "confidence_level": "contentious",
+        "span_match_notes": "EXPLICIT_YEAR",
+        "parsing_notes_contains": "contentious"
+      }
+    },
+    {
+      "name": "embedded_parenthetical_9600bce",
+      "html": "BULLET_EMBEDDED_PARENTHETICAL",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -9600,
+        "date_range_end": -9600,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Domestication of wheat marks the beginning",
+        "confidence_level": "explicit",
+        "span_match_notes": "EMBEDDED_YEAR"
+      }
+    },
+    {
+      "name": "embedded_range_4000_3000bce",
+      "html": "BULLET_EMBEDDED_RANGE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -4000,
+        "date_range_end": -3000,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Archaeological evidence shows grain cultivation",
+        "confidence_level": "explicit",
+        "span_match_notes": "EMBEDDED_RANGE"
+      }
+    },
+    {
+      "name": "section_inferred_8000_5000bce",
+      "html": "SECTION_WITH_IMPLICIT_RANGE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -8000,
+        "date_range_end": -5000,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Evidence of early grain cultivation",
+        "confidence_level": "inferred",
+        "span_match_notes": "SECTION_CONTEXT"
+      }
+    },
+    {
+      "name": "table_year_1847",
+      "html": "TABLE_EXPLICIT_YEAR",
+      "expected": {
+        "date_explicit": 1847,
+        "date_range_start": null,
+        "date_range_end": null,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "First candy-making machine invented",
+        "confidence_level": "explicit",
+        "span_match_notes": "EXPLICIT_YEAR"
+      }
+    },
+    {
+      "name": "table_decade_1990s",
+      "html": "TABLE_DECADE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": 1990,
+        "date_range_end": 1999,
+        "is_bc_start": false,
+        "is_bc_end": false,
+        "title": "Goldschläger cinnamon schnapps",
+        "confidence_level": "explicit",
+        "span_match_notes": "DECADE"
+      }
+    },
+    {
+      "name": "table_bce_range_8000_5000",
+      "html": "TABLE_BCE_RANGE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -8000,
+        "date_range_end": -5000,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Agricultural revolution begins",
+        "confidence_level": "explicit",
+        "span_match_notes": "YEAR_RANGE"
+      }
+    },
+    {
+      "name": "ancient_date_12000bce",
+      "html": "ANCIENT_DATE",
+      "expected": {
+        "date_explicit": null,
+        "date_range_start": -12000,
+        "date_range_end": -12000,
+        "is_bc_start": true,
+        "is_bc_end": true,
+        "title": "Early evidence of grain collection",
+        "confidence_level": "explicit",
+        "span_match_notes": "EXPLICIT_YEAR",
+        "parsing_notes_contains": "ancient date"
+      }
+    }
+  ]
+}

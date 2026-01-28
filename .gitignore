@@ -34,6 +34,9 @@ data/
 *.log
 logs/
 cache/
+
+# Temporary tools and debug scripts
+temp_tools/
 wikipedia-ingestion/REFACTORING_SUMMARY.md
 wikipedia-ingestion/future_revisions.md
 frontend/future_revisions.md
@@ -49,3 +52,6 @@ frontend/timeline.js.backup
 frontend/candidate_*/*
 */SPEC.md
 wikipedia-ingestion/artifacts/*.json
+
+# Mac Stuff
+.DS_Store

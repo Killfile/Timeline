@@ -3,11 +3,13 @@ from span_parsing.orchestrators.parse_orchestrator import ParseOrchestrator
 from span_parsing.orchestrators.years_parse_orchestrator import YearsParseOrchestrator
 from span_parsing.orchestrators.time_period_parse_orchestrator import TimePeriodParseOrchestrator
 from span_parsing.orchestrators.inline_no_fallback_orchestrator import InlineNoFallbackOrchestrator
+from span_parsing.orchestrators.food_timeline_parse_orchestrator import FoodTimelineParseOrchestrator
 
 class ParseOrchestratorTypes(Enum):
     YEARS = auto()
     TIME_PERIODS = auto()
     INLINE_NO_FALLBACK = auto()
+    FOOD_TIMELINE = auto()
 
 class ParseOrchestratorFactory:
     """Factory for creating parse orchestrators based on strategy type."""
@@ -31,5 +33,7 @@ class ParseOrchestratorFactory:
             return TimePeriodParseOrchestrator()
         elif strategy_type == ParseOrchestratorTypes.INLINE_NO_FALLBACK:
             return InlineNoFallbackOrchestrator()
+        elif strategy_type == ParseOrchestratorTypes.FOOD_TIMELINE:
+            return FoodTimelineParseOrchestrator()
         else:
             raise ValueError(f"Unknown orchestrator type: {strategy_type}")

@@ -94,14 +94,15 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Use type hints for function parameters and return values.
 - Use dictionaries or data classes for structured data rather than tuples or lists.
 - When running python tests or any local python code, ALWAYS run them in a virtual environment to avoid dependency conflicts.
+- You *never* need to spin up a python http.server locally. If you need a server, use docker.
 
 ### Frontend (JS)
 
 - When adding significant frontend logic, add tests using whatever test framework exists in the repo.
   - If no test framework is present, keep changes small and propose adding one separately.
+- Currently the canonical frontend application is in `frontend/candidate/`. When making changes to the frontend, ensure that the changes are made in the correct directory.
 
 ## API & DB changes
-
 - When adding API routes or DB schema changes:
   - update docs/README if user-facing behavior changes
   - validate backwards compatibility where reasonable
@@ -113,12 +114,87 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - Make logs actionable (include context like IDs, category names, and response status codes).
 - Avoid logging secrets.
 
+## Wikipedia Ingestion Strategies
+
+### Shared HTTP Caching Framework
+
+All ingestion strategies must use the shared HTTP caching framework in `ingestion_common.py` for fetching remote content. This ensures:
+- **Consistent caching**: URL-keyed SHA256 cache shared across all strategies
+- **Automatic retry logic**: Exponential backoff for transient failures (timeouts, 5xx errors)
+- **Content validation**: Content-type checking to prevent stub/malformed content
+- **Canonical URLs**: Captures final URL after redirects for deduplication
+- **Centralized logging**: All fetch operations logged consistently via `log_info()` and `log_error()`
+
+**Best Practice Pattern for `fetch()` Methods:**
+
+```python
+from ingestion_common import get_html, log_info, log_error
+
+def fetch(self) -> FetchResult:
+    log_info(f"Fetching {self.STRATEGY_NAME} from {self.WIKIPEDIA_URL}")
+    
+    # Always use get_html() for HTTP fetches
+    (html, final_url), error = get_html(
+        self.WIKIPEDIA_URL, 
+        context=self.STRATEGY_NAME.lower()
+    )
+    
+    if error or not html.strip():
+        log_error(f"Failed to fetch {self.STRATEGY_NAME}: {error}")
+        raise RuntimeError(f"Failed to fetch article: {error}")
+    
+    self.html_content = html
+    self.canonical_url = final_url
+    
+    return FetchResult(
+        strategy_name=self.STRATEGY_NAME,
+        fetch_count=1,
+        fetch_metadata={
+            "url": self.WIKIPEDIA_URL,
+            "final_url": final_url,
+            "content_length_bytes": len(self.html_content),
+            "fetch_timestamp_utc": datetime.utcnow().isoformat() + "Z",
+        }
+    )
+```
+
+**Return Tuple Format:**
+- Success: `((html_content: str, final_url: str), error: None)`
+- Error: `(("", final_url: str), error_message: str)`
+
+**Never Do:**
+- ❌ Use raw `requests.get()` for HTTP fetching
+- ❌ Create custom caching logic (files, dicts, etc.)
+- ❌ Hard-code User-Agent or custom retry logic
+- ❌ Log HTTP responses in strategy code (get_html() handles this)
+
+**Unit Test Mocking Pattern:**
+
+```python
+with patch('strategies.your_strategy.ingestion_common.get_html') as mock_get_html:
+    # Success case
+    mock_get_html.return_value = (("<html>content</html>", "https://final.url"), None)
+    result = strategy.fetch()
+    
+    # Error case
+    mock_get_html.return_value = (("", "https://url"), "Connection timeout")
+    with pytest.raises(RuntimeError):
+        strategy.fetch()
+```
+
 ## Running and Debugging
 
 - The frontend runs on http://localhost:3000 by default.
 - The API runs on http://localhost:8000 by default.
+- For testing ingestion logic, use: `python ingest_wikipedia.py <strategy_name>` (e.g., `python ingest_wikipedia.py timeline_of_food`, `python ingest_wikipedia.py wars`)
+- If you need to create temporary tools or debug scripts, place them in a `temp_tools/` directory at the repo root and do not commit them to version control.
 
-# Database and migrations
+## Git
+
+- Leave git operations to the user.
+- Do not issue git commands in agentic mode or suggest git commands unless explicitly asked.
+
+## Database and migrations
 - Don't bother attempting to modify data in place; we will destroy and recreate as needed.
 
 ## How dates work
@@ -131,4 +207,5 @@ These instructions apply to all Copilot-generated code and edits in this repo.
 - 1st century AD means years 1-100
 - 1st century BC means years 100-1 BC
 - There is no year 0 and there is no 0th century.
+- A date range with a BCE/BC marker on the end year always implies the start year is also BCE/BC.
 
