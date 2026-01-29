@@ -75,7 +75,16 @@ def ingest(strategy_names: list[str] | None = None) -> None:
             strategy_names = [s.strip().lower() for s in multi_strategies.split(",")]
         elif strategy == "all":
             # "all" means all available strategies
-            strategy_names = ["list_of_years", "bespoke_events", "time_periods", "wars", "lgbtq_history", "lgbtq_history_v2"]
+            strategy_names = [
+                "list_of_years",
+                "bespoke_events",
+                "time_periods",
+                "wars",
+                "lgbtq_history",
+                "lgbtq_history_v2",
+                "timeline_of_food",
+                "timeline_of_roman_history",
+            ]
         else:
             # Single strategy
             strategy_names = [strategy]

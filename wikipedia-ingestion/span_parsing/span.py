@@ -1,5 +1,7 @@
 """Dataclass representing a parsed date span."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 import json
 

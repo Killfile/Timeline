@@ -4,6 +4,8 @@ This module provides functionality to parse bullet point events and extract date
 using the FoodTimelineParseOrchestrator.
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from dataclasses import dataclass

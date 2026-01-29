@@ -1,5 +1,7 @@
 """Main span parser class with validation and utility methods."""
 
+from __future__ import annotations
+
 import re
 from span_parsing.span import Span
 from span_parsing.factory import SpanParsers, SpanParserFactory

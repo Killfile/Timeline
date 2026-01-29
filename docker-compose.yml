@@ -42,8 +42,8 @@ services:
   # Wikipedia Data Ingestion Service (Extract)
   wikipedia-ingestion:
     build:
-      context: ./wikipedia-ingestion
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: wikipedia-ingestion/Dockerfile
     container_name: timeline-wikipedia-ingestion
     environment:
       PYTHONUNBUFFERED: 1
@@ -67,23 +67,25 @@ services:
     networks:
       - timeline-network
     volumes:
-      - ./wikipedia-ingestion:/app
+      - ./wikipedia-ingestion:/app/wikipedia-ingestion
+      - ./timeline_common:/app/timeline_common
   
   # Database Loader Service (Load)
   database-loader:
     build:
-      context: ./wikipedia-ingestion
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: wikipedia-ingestion/Dockerfile
     container_name: timeline-database-loader
-    command: ["python", "-u", "database_loader.py"]
+    command: ["python", "-u", "wikipedia-ingestion/database_loader.py"]
     environment:
       PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app
       DB_HOST: database
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-timeline_history}
       DB_USER: ${POSTGRES_USER:-timeline_user}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
-      ARTIFACT_DIR: /app/logs
+      ARTIFACT_DIR: /app/wikipedia-ingestion/logs
       ARTIFACT_PATTERN: "events_*.json"
     depends_on:
       database:
@@ -91,7 +93,8 @@ services:
     networks:
       - timeline-network
     volumes:
-      - ./wikipedia-ingestion:/app
+      - ./wikipedia-ingestion:/app/wikipedia-ingestion
+      - ./timeline_common:/app/timeline_common
 
   # API Service
   api:

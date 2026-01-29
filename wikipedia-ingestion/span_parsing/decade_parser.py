@@ -1,5 +1,7 @@
 """Parser for decade notations like '1990s' or '1800s'."""
 
+from __future__ import annotations
+
 import re
 from span_parsing.strategy import SpanParserStrategy
 from span_parsing.span import Span, SpanPrecision

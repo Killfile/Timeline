@@ -1,5 +1,7 @@
 """Base class for span parsers that orchestrate multiple parsing strategies."""
 
+from __future__ import annotations
+
 import re
 from abc import ABC, abstractmethod
 from typing import List
