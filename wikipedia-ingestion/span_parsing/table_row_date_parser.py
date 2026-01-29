@@ -312,6 +312,7 @@ class TableRowDateParser:
                             original_text=date_text
                         )
             except (ValueError, IndexError):
+                # If month or day parsing fails, fall through to try other date formats
                 pass
         
         # If all fails, treat as year-only with original text

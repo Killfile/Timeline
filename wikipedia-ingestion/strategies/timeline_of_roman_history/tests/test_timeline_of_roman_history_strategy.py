@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from datetime import datetime
 
 from strategies.timeline_of_roman_history.timeline_of_roman_history_strategy import (
