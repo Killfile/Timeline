@@ -248,7 +248,7 @@
           },
           "_debug_extraction": {
             "type": [
-              "string",
+              "object",
               "null"
             ],
             "description": "Optional debug information about the extraction process"
