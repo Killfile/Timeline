@@ -292,6 +292,8 @@ class TableRowDateParser:
                             original_text=date_text
                         )
                 except ValueError:
+                    # If the second token is not an integer day, this pattern does not match;
+                    # fall through so that other parsing strategies (e.g., "21 April") can run.
                     pass
         
         # Try day + month pattern separately (e.g., "21 April")
