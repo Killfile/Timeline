@@ -7,7 +7,6 @@ and edge cases from Timeline of Roman History Wikipedia page.
 import pytest
 from span_parsing.table_row_date_parser import (
     TableRowDateParser,
-    ParsedDate,
     RowspanContext,
     ConfidenceLevel,
 )
