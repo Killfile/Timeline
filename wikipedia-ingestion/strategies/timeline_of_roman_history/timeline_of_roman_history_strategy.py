@@ -176,13 +176,18 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
             strategy_name=self.STRATEGY_NAME,
             events=historical_events,
             parse_metadata={
-                "parse_duration_seconds": elapsed,
-                "total_tables": len(tables),
-                "total_rows_processed": total_rows_processed,
-                "events_extracted": len(historical_events),
-                "skipped_rows": self.skipped_rows,
-                "parse_errors": self.parse_errors,
+                "total_events_found": total_rows_processed,
+                "total_events_parsed": len(historical_events),
+                "sections_identified": len(tables),
+                "parsing_start_utc": parse_start.isoformat() + "Z",
+                "parsing_end_utc": parse_end.isoformat() + "Z",
+                "elapsed_seconds": elapsed,
+                "events_per_second": len(historical_events) / elapsed if elapsed > 0 else 0,
                 "confidence_distribution": confidence_dist,
+                "undated_events": {
+                    "total_undated": self.skipped_rows,
+                    "events": []
+                },
             }
         )
     

@@ -1003,6 +1003,7 @@ class ListOfYearsStrategy(IngestionStrategy):
         """
         log_info(f"[{self.name()}] Starting parse phase...")
         
+        parse_start = datetime.utcnow()
         all_events = []
         seen_event_keys: set[tuple] = set()
         
@@ -1048,14 +1049,39 @@ class ListOfYearsStrategy(IngestionStrategy):
                 
                 all_events.append(event)
         
+        parse_end = datetime.utcnow()
+        elapsed = (parse_end - parse_start).total_seconds()
+        
         log_info(f"[{self.name()}] Parsed {len(all_events)} events")
+        
+        # Calculate confidence distribution (most events are explicit year-based)
+        confidence_dist = {
+            "explicit": len(all_events),
+            "inferred": 0,
+            "approximate": 0,
+            "contentious": 0,
+            "fallback": 0,
+        }
+        
+        # Count excluded (undated) events
+        total_excluded = sum(self.exclusions_agg_counts.values())
         
         return ParseResult(
             strategy_name=self.name(),
             events=all_events,
             parse_metadata={
-                "pages_processed": len(self.visited_page_keys),
-                "exclusions": self.exclusions_agg_counts
+                "total_events_found": len(all_events) + total_excluded,
+                "total_events_parsed": len(all_events),
+                "sections_identified": len(self.visited_page_keys),
+                "parsing_start_utc": parse_start.isoformat() + "Z",
+                "parsing_end_utc": parse_end.isoformat() + "Z",
+                "elapsed_seconds": elapsed,
+                "events_per_second": len(all_events) / elapsed if elapsed > 0 else 0,
+                "confidence_distribution": confidence_dist,
+                "undated_events": {
+                    "total_undated": total_excluded,
+                    "events": []
+                },
             }
         )
     

@@ -202,8 +202,11 @@ class BespokeEventsStrategy(IngestionStrategy):
         Returns:
             ParseResult with validated events as HistoricalEvent instances.
         """
+        from datetime import datetime
+        
         log_info(f"[{self.name()}] Starting parse phase...")
         
+        parse_start = datetime.utcnow()
         valid_events = []
         invalid_count = 0
         
@@ -229,18 +232,39 @@ class BespokeEventsStrategy(IngestionStrategy):
                 invalid_count += 1
                 continue
         
+        parse_end = datetime.utcnow()
+        elapsed = (parse_end - parse_start).total_seconds()
+        
         log_info(
             f"[{self.name()}] Validated {len(valid_events)} events "
             f"({invalid_count} invalid)"
         )
         
+        # Calculate confidence distribution (bespoke events are manually curated, so explicit)
+        confidence_dist = {
+            "explicit": len(valid_events),
+            "inferred": 0,
+            "approximate": 0,
+            "contentious": 0,
+            "fallback": 0,
+        }
+        
         return ParseResult(
             strategy_name=self.name(),
             events=valid_events,
             parse_metadata={
-                "total_loaded": len(self.loaded_events),
-                "valid_count": len(valid_events),
-                "invalid_count": invalid_count
+                "total_events_found": len(self.loaded_events),
+                "total_events_parsed": len(valid_events),
+                "sections_identified": 1,
+                "parsing_start_utc": parse_start.isoformat() + "Z",
+                "parsing_end_utc": parse_end.isoformat() + "Z",
+                "elapsed_seconds": elapsed,
+                "events_per_second": len(valid_events) / elapsed if elapsed > 0 else 0,
+                "confidence_distribution": confidence_dist,
+                "undated_events": {
+                    "total_undated": invalid_count,
+                    "events": []
+                },
             }
         )
     

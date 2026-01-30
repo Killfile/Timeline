@@ -15,6 +15,7 @@ venv/
 ENV/
 *.egg-info/
 .pytest_cache/
+.venv/
 
 # IDEs
 .vscode/

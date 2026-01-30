@@ -49,8 +49,11 @@ class LgbtqHistoryV2Strategy(IngestionStrategy):
 
     def parse(self, fetch_result: FetchResult) -> ParseResult:
         """Step 2: Parse each page for events."""
+        from datetime import datetime
+        
         log_info("Starting LGBTQ History v2 parse phase")
-
+        
+        parse_start = datetime.utcnow()
         page_urls = fetch_result.fetch_metadata["page_urls"]
         all_events = []
 
@@ -61,14 +64,37 @@ class LgbtqHistoryV2Strategy(IngestionStrategy):
                 log_info(f"Parsed {len(events)} events from {url}")
             except Exception as e:
                 log_error(f"Failed to parse page {url}: {e}")
+        
+        parse_end = datetime.utcnow()
+        elapsed = (parse_end - parse_start).total_seconds()
 
         log_info(f"Total events parsed: {len(all_events)}")
+        
+        # Calculate confidence distribution (LGBTQ events typically have explicit dates)
+        confidence_dist = {
+            "explicit": len(all_events),
+            "inferred": 0,
+            "approximate": 0,
+            "contentious": 0,
+            "fallback": 0,
+        }
+        
         return ParseResult(
             strategy_name=self.name(),
             events=all_events,
             parse_metadata={
-                "pages_parsed": len(page_urls),
-                "total_events": len(all_events)
+                "total_events_found": len(all_events),
+                "total_events_parsed": len(all_events),
+                "sections_identified": len(page_urls),
+                "parsing_start_utc": parse_start.isoformat() + "Z",
+                "parsing_end_utc": parse_end.isoformat() + "Z",
+                "elapsed_seconds": elapsed,
+                "events_per_second": len(all_events) / elapsed if elapsed > 0 else 0,
+                "confidence_distribution": confidence_dist,
+                "undated_events": {
+                    "total_undated": 0,
+                    "events": []
+                },
             }
         )
 

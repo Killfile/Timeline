@@ -98,6 +98,8 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         """
         log_info(f"Parsing {len(SECTION_HEADINGS)} sections: {', '.join(SECTION_HEADINGS)}")
         
+        parse_start = datetime.utcnow()
+        
         # Re-fetch to get the HTML (in real implementation we'd store it in fetch_result)
         (html_content, final_url), error = get_html(TIME_PERIODS_URL, context="time_periods_page")
         if error:
@@ -130,16 +132,36 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
             sections_found.append(section_name)
             log_info(f"Extracted {len(section_events)} events from '{section_name}' section")
         
+        parse_end = datetime.utcnow()
+        elapsed = (parse_end - parse_start).total_seconds()
+        
         log_info(f"Total extracted: {len(all_events)} time period events from {len(sections_found)} sections")
+        
+        # Calculate confidence distribution (time periods are approximate by nature)
+        confidence_dist = {
+            "explicit": 0,
+            "inferred": 0,
+            "approximate": len(all_events),
+            "contentious": 0,
+            "fallback": 0,
+        }
         
         return ParseResult(
             strategy_name=self.name(),
             events=all_events,
             parse_metadata={
-                "sections_found": sections_found,
-                "sections_missing": sections_missing,
-                "event_count": len(all_events),
-                "parsed_at": datetime.utcnow().isoformat(),
+                "total_events_found": len(all_events),
+                "total_events_parsed": len(all_events),
+                "sections_identified": len(sections_found),
+                "parsing_start_utc": parse_start.isoformat() + "Z",
+                "parsing_end_utc": parse_end.isoformat() + "Z",
+                "elapsed_seconds": elapsed,
+                "events_per_second": len(all_events) / elapsed if elapsed > 0 else 0,
+                "confidence_distribution": confidence_dist,
+                "undated_events": {
+                    "total_undated": 0,
+                    "events": []
+                },
             }
         )
 
