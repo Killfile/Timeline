@@ -19,7 +19,7 @@ from strategies.strategy_base import (
     ParseResult,
     ArtifactData,
 )
-from span_parsing.table_row_date_parser import TableRowDateParser, RowspanContext
+from span_parsing.table_row_date_parser import TableRowDateParser, RowspanContext, ConfidenceLevel
 from span_parsing.roman_event import RomanEvent
 
 
@@ -217,6 +217,9 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
             # Check if first cell is actually present or inherited via rowspan
             has_year_cell = len(cells) >= 1 and cells[0].name == 'td'
             
+            # Track whether this row inherits its year via rowspan
+            is_inherited_year = False
+            
             # If we're inheriting from a rowspan and there's no year cell, the date is in cells[0]
             if rowspan_context.should_inherit() and (len(cells) < 3 or not has_year_cell):
                 # This row is part of a rowspan - use inherited year
@@ -230,6 +233,7 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
                 log_info(
                     f"Inherited year {year_text} for row {row_idx} in table {table_idx}"
                 )
+                is_inherited_year = True
                 rowspan_context.consume_row()
             elif len(cells) < 2:
                 log_info(
@@ -264,9 +268,11 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
             
             try:
                 # Parse the row using TableRowDateParser
+                # Use INFERRED confidence for rows inheriting year via rowspan
                 parsed_date = self.date_parser.parse_row_pair(
                     year_text=year_text,
                     date_text=date_text,
+                    confidence_override=ConfidenceLevel.INFERRED if is_inherited_year else None
                 )
                 
                 if not event_text:
