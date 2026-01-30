@@ -4,6 +4,8 @@ This module implements the IngestionStrategy interface for extracting food histo
 events from the Wikipedia "Timeline of Food" article.
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import datetime
 from pathlib import Path
