@@ -4,13 +4,12 @@ import json
 import pytest
 from pathlib import Path
 from datetime import datetime
-from unittest.mock import patch, MagicMock
 import jsonschema
 
 from strategies.timeline_of_roman_history.timeline_of_roman_history_strategy import (
     TimelineOfRomanHistoryStrategy
 )
-from strategies.strategy_base import FetchResult, ParseResult
+from strategies.strategy_base import FetchResult
 
 
 def _load_fixture(filename: str) -> str:

@@ -1,16 +1,15 @@
 """End-to-End Tests for Timeline of Roman History Strategy."""
 
-import json
 import time
 import pytest
 from pathlib import Path
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from strategies.timeline_of_roman_history.timeline_of_roman_history_strategy import (
     TimelineOfRomanHistoryStrategy
 )
-from strategies.strategy_base import FetchResult, ParseResult
+from strategies.strategy_base import FetchResult
 
 
 def _load_fixture(filename: str) -> str:

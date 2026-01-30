@@ -12,7 +12,7 @@ Handles:
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 from enum import Enum
 import re
 from span_parsing.span import SpanPrecision
