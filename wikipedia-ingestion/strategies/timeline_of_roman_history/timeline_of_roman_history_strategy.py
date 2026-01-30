@@ -19,7 +19,6 @@ from strategies.strategy_base import (
     ParseResult,
     ArtifactData,
 )
-from historical_event import HistoricalEvent
 from span_parsing.table_row_date_parser import TableRowDateParser, RowspanContext
 from span_parsing.roman_event import RomanEvent
 
