@@ -5,11 +5,12 @@ This directory contains documentation for the atomic reimport feature and event 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Atomic Reimport Guide](#atomic-reimport-guide)
-3. [Event Key System](#event-key-system)
-4. [Enrichment Architecture](#enrichment-architecture)
-5. [Usage Examples](#usage-examples)
-6. [Troubleshooting](#troubleshooting)
+2. [API Authentication](#api-authentication)
+3. [Atomic Reimport Guide](#atomic-reimport-guide)
+4. [Event Key System](#event-key-system)
+5. [Enrichment Architecture](#enrichment-architecture)
+6. [Usage Examples](#usage-examples)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -25,6 +26,83 @@ This architecture allows you to:
 - ✅ **Preserve AI categorizations** across reimports
 - ✅ **Track user engagement** (interest counts) persistently
 - ✅ **Automatically clean up** orphaned enrichments
+
+---
+
+## API Authentication
+
+All API endpoints require JWT authentication via secure cookies (except `/token`).
+
+### Authentication Flow
+
+```
+1. Browser → POST /token (no headers needed)
+   ← API sets HttpOnly cookie with JWT (15-minute TTL)
+
+2. Browser → GET /events (cookie sent automatically with credentials: 'include')
+   ← API validates cookie, returns data
+
+3. Cookie reusable for 15 minutes, then browser requests new session
+```
+
+### Cookie-Based Authentication
+
+**Why cookies instead of tokens?**
+- **Better Security**: HttpOnly cookies cannot be accessed by JavaScript (XSS protection)
+- **Browser Enforced**: Non-browser clients cannot fake cookie behavior
+- **CSRF Protection**: SameSite=Strict flag prevents cross-site attacks
+- **Simpler Frontend**: No manual token management needed
+
+### Required Fetch Options
+
+All API requests from the browser must include:
+
+```javascript
+fetch('http://localhost:8000/events', {
+  credentials: 'include'  // Critical: ensures cookies are sent/received
+});
+```
+
+### Authentication Rules
+
+1. **All endpoints protected** except `/token` and `/logout`
+2. **Cookie validation required**: Valid JWT in `auth_token` cookie
+3. **Cookie expiration**: Sessions expire after 15 minutes (configurable via `API_TOKEN_TTL_SECONDS`)
+4. **Cookie reusability**: Same cookie can be used multiple times within TTL
+5. **Rate limiting**: Token issuance limited to 60 requests/minute per IP (configurable)
+
+### Configuration
+
+Set these environment variables in `docker-compose.yml` or `.env`:
+
+```bash
+# Required
+API_JWT_SECRET="test-jwt-secret-67890"
+
+# Optional - Cookie Settings
+COOKIE_NAME="auth_token"                 # Cookie name (default)
+COOKIE_SECURE="false"                    # Set to "true" in production (HTTPS only)
+COOKIE_SAMESITE="Strict"                 # CSRF protection (Strict or Lax)
+COOKIE_DOMAIN=""                         # Multi-subdomain support (optional)
+
+# Optional - Rate Limiting
+API_TOKEN_TTL_SECONDS=900                # Token expiration (default: 15 minutes)
+API_RATE_LIMIT_PER_MINUTE=60             # Token requests per minute
+API_RATE_LIMIT_BURST=10                  # Burst allowance
+CORS_ALLOWED_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
+```
+
+**⚠️ Production Security**: 
+- Set `COOKIE_SECURE=true` to enforce HTTPS-only cookies
+- Restrict `CORS_ALLOWED_ORIGINS` to your domain only
+- Use a strong random string for `API_JWT_SECRET` (256+ bits)
+
+### Error Responses
+
+- **401 Unauthorized**: Missing/invalid/expired cookie, or `credentials: 'include'` not set
+- **429 Too Many Requests**: Rate limit exceeded on `/token` endpoint
+
+See [api/README.md](../api/README.md) for detailed authentication documentation.
 
 ---
 

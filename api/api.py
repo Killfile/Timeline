@@ -1,12 +1,25 @@
 import os
-from fastapi import FastAPI, HTTPException, Query
+import logging
+from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
-from typing import Any, Dict
+
+from auth.auth_dependency import build_auth_dependency
+from auth.client_detection import parse_user_agent, get_client_summary
+from auth.config import AuthConfig, load_auth_config
+from auth.jwt_service import generate_token
+from auth.rate_limiter import RateLimiter
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Database configuration
 DB_CONFIG = {
@@ -16,6 +29,14 @@ DB_CONFIG = {
     'user': os.getenv('DB_USER', 'timeline_user'),
     'password': os.getenv('DB_PASSWORD', 'timeline_pass')
 }
+
+# CORS configuration
+CORS_ORIGINS = [
+    origin.strip() for origin in os.getenv(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',')
+]
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,11 +48,25 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
+
+_token_rate_limiter: RateLimiter | None = None
+_auth_dependency = build_auth_dependency()
+
+
+def _get_token_rate_limiter(config: AuthConfig) -> RateLimiter:
+    global _token_rate_limiter
+    if _token_rate_limiter is None:
+        _token_rate_limiter = RateLimiter(
+            limit_per_minute=config.rate_limit_per_minute,
+            burst=config.rate_limit_burst,
+        )
+    return _token_rate_limiter
 
 
 # Pydantic models
@@ -72,6 +107,43 @@ class TimelineStats(BaseModel):
     earliest_year: Optional[int] = None
     latest_year: Optional[int] = None
     categories: List[str] = []
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_in: int
+
+
+@app.middleware("http")
+async def enforce_authentication(request: Request, call_next):
+    # Allow CORS preflight requests
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    
+    # Skip authentication for /token endpoint
+    if request.url.path == "/token":
+        return await call_next(request)
+    
+    # Enforce authentication on all other endpoints
+    try:
+        _auth_dependency(request)
+    except HTTPException as exc:
+        from fastapi.responses import JSONResponse
+        response = JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+        # Manually add CORS headers since we're bypassing call_next
+        origin = request.headers.get("origin")
+        if origin in CORS_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+    
+    return await call_next(request)
 
 
 class ExtractionDebug(BaseModel):
@@ -152,6 +224,112 @@ def health_check():
         return {"status": "healthy"}
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+
+@app.post("/token")
+def issue_token(request: Request, response: Response) -> Dict[str, Any]:
+    """Issue a JWT token via HttpOnly cookie for all clients.
+    
+    Sets a secure, HttpOnly cookie containing the JWT.
+    No client secret required - rate limiting provides abuse protection.
+    """
+    try:
+        config = load_auth_config()
+    except ValueError as exc:
+        logger.error("Failed to load auth config", extra={"error": str(exc)})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("User-Agent", "")
+    
+    # Parse user-agent for monitoring/logging
+    client_info = parse_user_agent(user_agent)
+    client_summary = get_client_summary(client_info)
+    
+    # Rate limiting
+    limiter = _get_token_rate_limiter(config)
+    if not limiter.allow(client_ip):
+        logger.warning(
+            "Token issuance rate limit exceeded",
+            extra={
+                "client_ip": client_ip,
+                "client_type": client_summary["client_type"],
+                "status_code": 429,
+            }
+        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+
+    # Generate token
+    token_payload = generate_token(config)
+    
+    # Set cookie with JWT
+    response.set_cookie(
+        key=config.cookie_name,
+        value=token_payload.token,
+        max_age=token_payload.expires_in,
+        httponly=True,
+        secure=config.cookie_secure,
+        samesite=config.cookie_samesite,
+        domain=config.cookie_domain,
+    )
+    
+    logger.info(
+        "Token issued successfully via cookie",
+        extra={
+            "client_ip": client_ip,
+            "client_type": client_summary["client_type"],
+            "browser": client_summary["browser"],
+            "confidence": client_summary["confidence"],
+            "token_id": token_payload.token_id[:8] + "...",  # Only log prefix
+            "expires_in": token_payload.expires_in,
+            "status_code": 200,
+        }
+    )
+    
+    return {
+        "status": "success",
+        "message": "Authentication token set in cookie",
+        "expires_in": token_payload.expires_in,
+    }
+
+
+@app.post("/logout")
+def logout(request: Request, response: Response) -> Dict[str, str]:
+    """Clear the authentication cookie to log out.
+    
+    Returns a success message after clearing the cookie.
+    """
+    try:
+        config = load_auth_config()
+    except ValueError as exc:
+        logger.error("Failed to load auth config", extra={"error": str(exc)})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Clear the cookie by setting max_age=0
+    response.set_cookie(
+        key=config.cookie_name,
+        value="",
+        max_age=0,
+        httponly=True,
+        secure=config.cookie_secure,
+        samesite=config.cookie_samesite,
+        domain=config.cookie_domain,
+    )
+    
+    logger.info(
+        "User logged out successfully",
+        extra={
+            "client_ip": client_ip,
+            "status_code": 200,
+        }
+    )
+    
+    return {
+        "status": "success",
+        "message": "Logged out successfully",
+    }
 
 
 def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:

@@ -89,7 +89,8 @@
             "inferred",
             "approximate",
             "contentious",
-            "fallback"
+            "fallback",
+            "legendary"
           ],
           "properties": {
             "explicit": {
@@ -115,6 +116,11 @@
             "fallback": {
               "type": "integer",
               "description": "Events parsed using fallback/alternative parsing methods",
+              "minimum": 0
+            },
+            "legendary": {
+              "type": "integer",
+              "description": "Events from legendary or mythological sources with uncertain historicity",
               "minimum": 0
             }
           }

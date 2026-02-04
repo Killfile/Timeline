@@ -56,3 +56,6 @@ wikipedia-ingestion/artifacts/*.json
 
 # Mac Stuff
 .DS_Store
+
+# Coverage reports
+.coverage

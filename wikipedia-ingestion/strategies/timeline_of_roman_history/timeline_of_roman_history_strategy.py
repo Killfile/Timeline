@@ -5,7 +5,6 @@ from the Wikipedia "Timeline of Roman History" article. The article uses tables 
 year and date columns that require special rowspan handling.
 """
 
-import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -21,9 +20,6 @@ from strategies.strategy_base import (
 )
 from span_parsing.table_row_date_parser import TableRowDateParser, RowspanContext
 from span_parsing.roman_event import RomanEvent
-
-
-logger = logging.getLogger(__name__)
 
 
 class TimelineOfRomanHistoryStrategy(IngestionStrategy):
@@ -179,6 +175,8 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
                 "total_events_found": total_rows_processed,
                 "total_events_parsed": len(historical_events),
                 "sections_identified": len(tables),
+                "total_tables": len(tables),
+                "total_rows_processed": total_rows_processed,
                 "parsing_start_utc": parse_start.isoformat() + "Z",
                 "parsing_end_utc": parse_end.isoformat() + "Z",
                 "elapsed_seconds": elapsed,
@@ -188,6 +186,8 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
                     "total_undated": self.skipped_rows,
                     "events": []
                 },
+                "skipped_rows": self.skipped_rows,
+                "events_extracted": len(historical_events),
             }
         )
     
@@ -317,11 +317,20 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
         """Calculate distribution of confidence levels across events.
         
         Returns:
-            Dictionary with confidence level counts
+            Dictionary with confidence level counts matching schema requirements
         """
         from collections import Counter
         confidence_counts = Counter(event.confidence.value for event in self.roman_events)
-        return dict(confidence_counts)
+        
+        # Schema requires these specific keys
+        return {
+            "explicit": confidence_counts.get("explicit", 0),
+            "inferred": confidence_counts.get("inferred", 0),
+            "approximate": confidence_counts.get("approximate", 0),
+            "contentious": confidence_counts.get("contentious", 0),
+            "fallback": confidence_counts.get("fallback", 0),
+            "legendary": confidence_counts.get("legendary", 0),
+        }
     
     def generate_artifacts(self, parse_result: ParseResult) -> ArtifactData:
         """Generate JSON artifact file with all events.
