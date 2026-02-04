@@ -428,7 +428,7 @@ class TestParsePhase:
         result = strategy.parse(fetch_result)
         
         # Check metadata structure
-        assert "parse_duration_seconds" in result.parse_metadata
+        assert "elapsed_seconds" in result.parse_metadata
         assert "total_tables" in result.parse_metadata
         assert "total_rows_processed" in result.parse_metadata
         assert "events_extracted" in result.parse_metadata

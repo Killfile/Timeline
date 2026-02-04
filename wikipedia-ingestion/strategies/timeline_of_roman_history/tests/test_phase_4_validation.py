@@ -275,7 +275,7 @@ class TestArtifactSchemaValidation:
 
     
     def test_metadata_structure_complete(self):
-        """Verify metadata has all accessible fields."""
+        """Verify metadata matches the schema definition."""
         strategy = TimelineOfRomanHistoryStrategy(
             run_id=datetime.utcnow().strftime("%Y%m%dT%H%M%SZ"),
             output_dir=Path('/tmp/test_artifacts')
@@ -296,19 +296,13 @@ class TestArtifactSchemaValidation:
         artifact_dict = artifact_data.to_dict()
         metadata = artifact_dict["metadata"]
         
-        # Check metadata has parsing information
-        assert isinstance(metadata, dict)
-        assert "parse_duration_seconds" in metadata
-        assert "total_tables" in metadata
-        assert "total_rows_processed" in metadata
-        assert "events_extracted" in metadata
-        assert "skipped_rows" in metadata
-        assert "confidence_distribution" in metadata
-        
-        # Confidence distribution should have counts
-        confidence = metadata["confidence_distribution"]
-        assert isinstance(confidence, dict)
-        assert len(confidence) > 0  # Should have at least one confidence level
+        # Validate metadata against schema
+        schema = _load_schema()
+        metadata_schema = schema["properties"]["metadata"]
+        try:
+            jsonschema.validate(instance=metadata, schema=metadata_schema)
+        except jsonschema.ValidationError as e:
+            pytest.fail(f"Metadata schema validation failed: {e.message}\nMetadata: {metadata}")
 
 
 

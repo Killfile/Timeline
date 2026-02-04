@@ -75,6 +75,7 @@ class TimelineRenderer {
         // Loading state
         this.isLoading = false;
         this.loadingIndicator = document.getElementById('loading-indicator');
+        this.loadingText = document.querySelector('.loading-text');
 
         // Rendering
         this.events = [];
@@ -102,7 +103,20 @@ class TimelineRenderer {
         this.setupCanvas();
         this.setupEventListeners();
         this.determineLoadingStrategy();
-        this.loadEventsForViewport();
+
+        // Authenticate and then load events
+        if (this.loadingText) {
+            this.loadingText.textContent = 'Authenticating...';
+        }
+        this.loadingIndicator.classList.add('visible');
+
+        this.authenticate().then(() => {
+            this.loadEventsForViewport();
+        }).catch(error => {
+            console.error('Initial authentication failed:', error);
+            this.showAuthError('Unable to authenticate. Check API/CORS and refresh the page.');
+        });
+        
         this.animate();
     }
 
@@ -297,6 +311,11 @@ class TimelineRenderer {
             this.settingsMenu.classList.remove('active');
         });
 
+        document.getElementById('fab-logout').addEventListener('click', () => {
+            this.logout();
+            this.settingsMenu.classList.remove('active');
+        });
+
         // Filter Panel
         document.getElementById('filter-close').addEventListener('click', () => {
             this.hideFilterPanel();
@@ -457,7 +476,7 @@ class TimelineRenderer {
             }
 
             // Request events from extended viewport but with higher weight requirements
-            const response = await fetch(
+            const response = await this.authFetch(
                 `${API_URL}/events/bins?${queryParams.toString()}`
             );
 
@@ -611,11 +630,99 @@ class TimelineRenderer {
     }
 
     showLoadingIndicator() {
+        if (this.loadingText) {
+            this.loadingText.textContent = 'Loading events...';
+        }
         this.loadingIndicator.classList.add('visible');
     }
 
     hideLoadingIndicator() {
         this.loadingIndicator.classList.remove('visible');
+    }
+
+    showAuthError(message) {
+        if (this.loadingText) {
+            this.loadingText.textContent = message;
+        }
+        this.loadingIndicator.classList.add('visible');
+    }
+
+    async authFetch(url, options = {}) {
+        // Cookie-based authentication: browser automatically includes HttpOnly cookie
+        const response = await fetch(url, {
+            ...options,
+            credentials: 'include' // Ensures cookies are sent with request
+        });
+
+        // Handle 401 by attempting to re-authenticate once
+        if (response.status === 401 && !options._retried) {
+            console.log('Authentication expired, refreshing...');
+            try {
+                await this.authenticate();
+                // Retry the original request once
+                return this.authFetch(url, { ...options, _retried: true });
+            } catch (error) {
+                console.error('Re-authentication failed:', error);
+                this.showAuthError('Session expired. Please refresh the page to continue.');
+                throw error;
+            }
+        }
+
+        return response;
+    }
+
+    async authenticate() {
+        // Call /token endpoint to set authentication cookie
+        try {
+            const response = await fetch(`${API_URL}/token`, {
+                method: 'POST',
+                credentials: 'include' // Ensures cookie is stored
+            });
+
+            if (!response.ok) {
+                let detail = '';
+                try {
+                    const payload = await response.json();
+                    detail = payload.detail || payload.message || JSON.stringify(payload);
+                } catch (parseError) {
+                    detail = '';
+                }
+
+                const message = detail
+                    ? `Authentication failed (${response.status}): ${detail}`
+                    : `Authentication failed (${response.status})`;
+                console.error(message);
+                this.showAuthError(message);
+                throw new Error(message);
+            }
+
+            const data = await response.json();
+            console.log('Authentication successful:', data.message);
+            return data;
+        } catch (error) {
+            console.error('Authentication request failed:', error);
+            this.showAuthError('Authentication request failed. Check API/CORS and try again.');
+            throw error;
+        }
+    }
+
+    async logout() {
+        try {
+            const response = await fetch(`${API_URL}/logout`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                console.log('Logged out successfully');
+                // Reload page to clear any cached state
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error('Logout failed:', error);
+            // Still reload to clear state
+            window.location.reload();
+        }
     }
 
     calculateBandPositions() {
@@ -1624,7 +1731,7 @@ class TimelineRenderer {
 
     populateElements() {
         // Fetch all strategies from the API
-        fetch(`${API_URL}/strategies`)
+        this.authFetch(`${API_URL}/strategies`)
             .then(response => response.json())
             .then(data => {
                 this.allElements.clear();
@@ -1755,7 +1862,7 @@ class TimelineRenderer {
 
             // Use API search for queries 3+ characters
             if (searchTerm.length >= 3) {
-                const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(searchTerm)}&limit=20`);
+                const response = await this.authFetch(`${API_URL}/search?q=${encodeURIComponent(searchTerm)}&limit=20`);
                 
                 if (response.ok) {
                     results = await response.json();

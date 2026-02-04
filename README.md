@@ -50,6 +50,50 @@ This application consists of four containerized services:
    - **API**: http://localhost:8000
    - **API Documentation**: http://localhost:8000/docs
 
+## API Authentication
+
+All API endpoints require JWT authentication (except `/token` and `/logout`). The frontend automatically handles authentication using HTTP-only cookies.
+
+### Quick Start (Browser)
+
+The frontend automatically obtains and manages authentication cookies. Just open http://localhost:3000 and the timeline will load.
+
+### Manual API Access (curl)
+
+1. Get an authentication cookie:
+```bash
+curl -X POST http://localhost:8000/token \
+  -c cookies.txt \
+  -H "Origin: http://localhost:3000"
+```
+
+2. Use the cookie in API requests:
+```bash
+curl http://localhost:8000/events \
+  -b cookies.txt \
+  -H "Origin: http://localhost:3000"
+```
+
+### Key Points
+
+- **Token TTL**: 15 minutes (900 seconds)
+- **Cookie-Based Auth**: JWT stored in HTTP-only cookies (secure, no JavaScript access)
+- **Protected Endpoints**: All endpoints except `/token` and `/logout` require authentication
+- **Rate Limiting**: 60 token requests per minute per IP
+
+### Configuration
+
+Set these in `docker-compose.yml`:
+```yaml
+API_JWT_SECRET: "test-jwt-secret-67890"
+CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+COOKIE_SECURE: "true"  # Use true in production
+```
+
+**⚠️ Production**: Change default JWT secret to a strong random value and restrict CORS origins to your domain.
+
+For detailed authentication documentation, see [api/README.md](api/README.md) and [docs/README.md](docs/README.md).
+
 ## Using the Timeline
 
 ### Navigation
@@ -94,10 +138,12 @@ This application consists of four containerized services:
 ### API Service
 - **Base URL**: http://localhost:8000
 - **Interactive Docs**: http://localhost:8000/docs
+- **Authentication**: All endpoints require JWT authentication (see [API Authentication](#api-authentication))
 
 **Endpoints**:
+- `POST /token` - Get JWT access token (X-Client-Secret required)
 - `GET /` - API information
-- `GET /health` - Health check
+- `GET /health` - Health check ⚠️ **Requires authentication**
 - `GET /events` - List events (filterable by year range, category)
 - `GET /events/{id}` - Get specific event
 - `GET /stats` - Timeline statistics
@@ -292,7 +338,9 @@ docker compose down -v
 - Verify data was inserted: Access API at http://localhost:8000/stats
 
 ### Timeline not rendering
-- Verify the API is accessible: http://localhost:8000/health
+- Check browser console for authentication or CORS errors
+- Verify the API is accessible with authentication (see [API Authentication](#api-authentication))
+- Ensure `CORS_ALLOWED_ORIGINS` in docker-compose.yml includes your frontend origin
 - Check browser console for JavaScript errors
 - Ensure events have valid year data
 

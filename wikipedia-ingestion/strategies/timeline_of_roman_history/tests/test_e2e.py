@@ -246,15 +246,15 @@ class TestErrorHandling:
         parse_result = strategy.parse(fetch_result)
         artifact_data = strategy.generate_artifacts(parse_result)
         
-        # Check that we have events and skipped_rows is acceptable
+        # Check that we have events and undated events tracking is acceptable
         assert len(artifact_data.events) > 0, "Should have parsed events"
         
         # Verify metadata has error info
         metadata = artifact_data.to_dict()["metadata"]
-        assert "skipped_rows" in metadata
+        assert "undated_events" in metadata
         
-        # Should have skipped minimal rows (ideally 0)
-        assert metadata["skipped_rows"] == 0, "Should not skip rows in clean fixture"
+        # Should have skipped minimal undated events (ideally 0)
+        assert metadata["undated_events"]["total_undated"] == 0, "Should not have undated events in clean fixture"
     
     def test_malformed_date_handling(self):
         """Verify strategy handles malformed dates gracefully."""
@@ -322,15 +322,15 @@ class TestSummaryReport:
         
         # Verify metadata has summary counts
         metadata = artifact_dict["metadata"]
-        assert "total_tables" in metadata
-        assert "total_rows_processed" in metadata
-        assert "events_extracted" in metadata
-        assert "skipped_rows" in metadata
+        assert "sections_identified" in metadata
+        assert "total_events_found" in metadata
+        assert "total_events_parsed" in metadata
+        assert "undated_events" in metadata
         assert "confidence_distribution" in metadata
         
         # Verify counts are sensible
-        assert metadata["events_extracted"] == len(artifact_dict["events"])
-        assert metadata["total_rows_processed"] >= metadata["events_extracted"]
+        assert metadata["total_events_parsed"] == len(artifact_dict["events"])
+        assert metadata["total_events_found"] >= metadata["total_events_parsed"]
     
     def test_confidence_distribution_in_summary(self):
         """Verify summary includes confidence distribution breakdown."""
@@ -383,7 +383,9 @@ class TestSummaryReport:
         
         metadata = artifact_data.to_dict()["metadata"]
         
-        # Should have parse duration
-        assert "parse_duration_seconds" in metadata
-        assert metadata["parse_duration_seconds"] > 0
-        assert metadata["parse_duration_seconds"] < 30  # Should be fast
+        # Should have parse timing
+        assert "elapsed_seconds" in metadata
+        assert metadata["elapsed_seconds"] > 0
+        assert metadata["elapsed_seconds"] < 30  # Should be fast
+        assert "parsing_start_utc" in metadata
+        assert "parsing_end_utc" in metadata
