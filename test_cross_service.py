@@ -8,7 +8,6 @@ Tests:
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Test setup

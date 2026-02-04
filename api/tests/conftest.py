@@ -13,12 +13,10 @@ if str(API_DIR) not in sys.path:
 
 # Set default environment variables for testing before any imports
 # This ensures api.py can be imported without errors
-os.environ.setdefault("API_CLIENT_SECRET", "test-client-secret-12345")
 os.environ.setdefault("API_JWT_SECRET", "test-jwt-secret-67890")
-os.environ.setdefault("API_ALLOWED_ORIGINS", "http://localhost:3000")
-os.environ.setdefault("API_COOKIE_NAME", "timeline_auth_test")
-os.environ.setdefault("API_COOKIE_SECURE", "false")
-os.environ.setdefault("API_COOKIE_SAMESITE", "lax")
+os.environ.setdefault("COOKIE_NAME", "timeline_auth_test")
+os.environ.setdefault("COOKIE_SECURE", "false")
+os.environ.setdefault("COOKIE_SAMESITE", "lax")
 
 
 @pytest.fixture

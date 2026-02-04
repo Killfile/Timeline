@@ -1,4 +1,3 @@
-from datetime import timedelta
 
 import jwt
 import pytest
@@ -9,13 +8,10 @@ from api.auth.jwt_service import decode_token, generate_token
 
 def _build_config() -> AuthConfig:
     return AuthConfig(
-        client_secret="client-secret",  # Obsolete but kept for backwards compat
         jwt_secret="jwt-secret",
         jwt_issuer=None,
         jwt_audience=None,
-        allowed_origins=("http://localhost:3000",),  # Obsolete but kept for backwards compat
         token_ttl_seconds=60,
-        replay_window_seconds=60,
         rate_limit_per_minute=60,
         rate_limit_burst=10,
         cookie_name="test_auth",

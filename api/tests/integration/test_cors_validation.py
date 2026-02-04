@@ -3,7 +3,6 @@
 Tests that CORS is properly configured for cookie-based authentication.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 

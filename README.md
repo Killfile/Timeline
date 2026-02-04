@@ -52,41 +52,45 @@ This application consists of four containerized services:
 
 ## API Authentication
 
-All API endpoints require JWT authentication (except `/token`). The frontend automatically handles authentication, but if you're accessing the API directly:
+All API endpoints require JWT authentication (except `/token` and `/logout`). The frontend automatically handles authentication using HTTP-only cookies.
 
-### Quick Start
+### Quick Start (Browser)
 
-1. Get an access token:
+The frontend automatically obtains and manages authentication cookies. Just open http://localhost:3000 and the timeline will load.
+
+### Manual API Access (curl)
+
+1. Get an authentication cookie:
 ```bash
 curl -X POST http://localhost:8000/token \
-  -H "X-Client-Secret: test-client-secret-12345" \
+  -c cookies.txt \
   -H "Origin: http://localhost:3000"
 ```
 
-2. Use the token in API requests:
+2. Use the cookie in API requests:
 ```bash
 curl http://localhost:8000/events \
-  -H "Authorization: Bearer <your-token>" \
+  -b cookies.txt \
   -H "Origin: http://localhost:3000"
 ```
 
 ### Key Points
 
 - **Token TTL**: 15 minutes (900 seconds)
-- **Required Headers**: `Authorization: Bearer <token>` and `Origin: <your-domain>`
-- **Protected Endpoints**: All endpoints except `/token` require authentication
+- **Cookie-Based Auth**: JWT stored in HTTP-only cookies (secure, no JavaScript access)
+- **Protected Endpoints**: All endpoints except `/token` and `/logout` require authentication
 - **Rate Limiting**: 60 token requests per minute per IP
 
 ### Configuration
 
 Set these in `docker-compose.yml`:
 ```yaml
-API_CLIENT_SECRET: "test-client-secret-12345"
 API_JWT_SECRET: "test-jwt-secret-67890"
-API_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+COOKIE_SECURE: "true"  # Use true in production
 ```
 
-**⚠️ Production**: Change default secrets and restrict origins to your domain.
+**⚠️ Production**: Change default JWT secret to a strong random value and restrict CORS origins to your domain.
 
 For detailed authentication documentation, see [api/README.md](api/README.md) and [docs/README.md](docs/README.md).
 
@@ -336,7 +340,7 @@ docker compose down -v
 ### Timeline not rendering
 - Check browser console for authentication or CORS errors
 - Verify the API is accessible with authentication (see [API Authentication](#api-authentication))
-- Ensure the `API_CLIENT_SECRET` in docker-compose.yml matches the frontend configuration
+- Ensure `CORS_ALLOWED_ORIGINS` in docker-compose.yml includes your frontend origin
 - Check browser console for JavaScript errors
 - Ensure events have valid year data
 

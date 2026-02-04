@@ -15,12 +15,10 @@ def client():
 @pytest.fixture
 def auth_env(monkeypatch):
     """Set up auth environment variables."""
-    monkeypatch.setenv("API_CLIENT_SECRET", "test-client-secret")
-    monkeypatch.setenv("API_JWT_SECRET", "test-jwt-secret")
-    monkeypatch.setenv("API_ALLOWED_ORIGINS", "http://localhost:3000")
-    monkeypatch.setenv("API_COOKIE_NAME", "test_auth_cookie")
-    monkeypatch.setenv("API_COOKIE_SECURE", "false")  # For testing
-    monkeypatch.setenv("API_COOKIE_SAMESITE", "lax")
+    monkeypatch.setenv("API_JWT_SECRET", "test-jwt-secret-67890")  # Must match conftest.py default
+    monkeypatch.setenv("COOKIE_NAME", "timeline_auth_test")  # Must match conftest.py default
+    monkeypatch.setenv("COOKIE_SECURE", "false")  # For testing
+    monkeypatch.setenv("COOKIE_SAMESITE", "lax")
     yield
 
 
@@ -36,10 +34,10 @@ class TestTokenEndpoint:
         assert "expires_in" in response.json()
         
         # Check cookie is set
-        assert "test_auth_cookie" in response.cookies
+        assert "timeline_auth_test" in response.cookies
         
         # Check cookie attributes
-        cookie = response.cookies["test_auth_cookie"]
+        cookie = response.cookies["timeline_auth_test"]
         assert cookie  # Not empty
         assert response.headers.get("set-cookie")  # Cookie header present
 
@@ -59,29 +57,27 @@ class TestTokenEndpoint:
         assert set_cookie_header
         assert "SameSite=lax" in set_cookie_header or "SameSite=Lax" in set_cookie_header
 
-    def test_token_rate_limiting(self, client, auth_env, monkeypatch):
+    def test_token_rate_limiting(self, client, auth_env):
         """Test that rate limiting is enforced."""
-        # Set very low rate limit
-        monkeypatch.setenv("API_TOKEN_RATE_LIMIT_PER_MIN", "2")
-        monkeypatch.setenv("API_TOKEN_RATE_LIMIT_BURST", "1")
+        from api.auth.rate_limiter import RateLimiter
         
-        # Reload config by forcing module reload
-        from api.auth import config
-        import importlib
-        importlib.reload(config)
+        # Create a test rate limiter with very low limits: limit=1, burst=1 = 2 total allowed
+        test_limiter = RateLimiter(limit_per_minute=1, burst=1)
         
-        # First request should succeed
-        response1 = client.post("/token")
-        assert response1.status_code == 200
-        
-        # Second request should succeed (burst)
-        response2 = client.post("/token")
-        assert response2.status_code == 200
-        
-        # Third request should be rate limited
-        response3 = client.post("/token")
-        assert response3.status_code == 429
-        assert "rate limit" in response3.json()["detail"].lower()
+        # Mock the rate limiter getter to return our test limiter
+        with patch('api.api._get_token_rate_limiter', return_value=test_limiter):
+            # First request should succeed (count=1, within limit+burst=2)
+            response1 = client.post("/token")
+            assert response1.status_code == 200
+
+            # Second request should succeed (count=2, within limit+burst=2)
+            response2 = client.post("/token")
+            assert response2.status_code == 200
+
+            # Third request should be rate limited (count=3, exceeds limit+burst=2)
+            response3 = client.post("/token")
+            assert response3.status_code == 429
+            assert "rate limit" in response3.json()["detail"].lower()
 
 
 class TestProtectedEndpoints:
@@ -96,43 +92,46 @@ class TestProtectedEndpoints:
 
     def test_valid_cookie_authenticates(self, client, auth_env):
         """Test that valid cookie allows access to protected endpoints."""
-        # Get a token
+        # Get a token - this sets the cookie in the client's cookie jar
         token_response = client.post("/token")
         assert token_response.status_code == 200
-        cookie_value = token_response.cookies["test_auth_cookie"]
+        assert "timeline_auth_test" in token_response.cookies
         
-        # Use cookie to access protected endpoint
-        response = client.get("/events", cookies={"test_auth_cookie": cookie_value})
+        # Use TestClient's automatic cookie handling - cookie is sent automatically
+        response = client.get("/events")
         
         # Should not be 401 (actual response depends on endpoint implementation)
         assert response.status_code != 401
 
     def test_invalid_cookie_returns_401(self, client, auth_env):
         """Test that invalid cookie returns 401."""
-        response = client.get("/events", cookies={"test_auth_cookie": "invalid-token"})
+        response = client.get("/events", cookies={"timeline_auth_test": "invalid-token"})
         
         assert response.status_code == 401
 
-    def test_expired_cookie_returns_401(self, client, auth_env, monkeypatch):
+    def test_expired_cookie_returns_401(self, client, auth_env):
         """Test that expired cookie returns 401."""
-        # Set very short TTL
-        monkeypatch.setenv("API_TOKEN_TTL_SECONDS", "1")
+        import jwt
+        from api.auth.config import load_auth_config
+        from datetime import datetime, timezone, timedelta
         
-        # Reload config
-        from api.auth import config
-        import importlib
-        importlib.reload(config)
+        config = load_auth_config()
         
-        # Get a token
-        token_response = client.post("/token")
-        cookie_value = token_response.cookies["test_auth_cookie"]
+        # Manually create an expired JWT token
+        past_time = datetime.now(timezone.utc) - timedelta(seconds=100)
+        expired_claims = {
+            "exp": int(past_time.timestamp()),  # Expired 100 seconds ago
+            "iat": int((past_time - timedelta(seconds=config.token_ttl_seconds)).timestamp()),
+            "jti": "test-expired-token-id"
+        }
         
-        # Wait for expiration
-        import time
-        time.sleep(2)
+        expired_token = jwt.encode(expired_claims, config.jwt_secret, algorithm="HS256")
+        
+        # Set the expired cookie
+        client.cookies.set("timeline_auth_test", expired_token)
         
         # Try to use expired cookie
-        response = client.get("/events", cookies={"test_auth_cookie": cookie_value})
+        response = client.get("/events")
         
         assert response.status_code == 401
         assert "expired" in response.json()["detail"].lower()
@@ -171,9 +170,8 @@ class TestCookieFlags:
 
     def test_cookie_secure_flag_in_production(self, client, monkeypatch):
         """Test that Secure flag is set in production mode."""
-        monkeypatch.setenv("API_CLIENT_SECRET", "test-client-secret")
         monkeypatch.setenv("API_JWT_SECRET", "test-jwt-secret")
-        monkeypatch.setenv("API_COOKIE_SECURE", "true")
+        monkeypatch.setenv("COOKIE_SECURE", "true")
         
         response = client.post("/token")
         
@@ -183,9 +181,8 @@ class TestCookieFlags:
 
     def test_cookie_strict_samesite(self, client, monkeypatch):
         """Test that SameSite=Strict can be configured."""
-        monkeypatch.setenv("API_CLIENT_SECRET", "test-client-secret")
         monkeypatch.setenv("API_JWT_SECRET", "test-jwt-secret")
-        monkeypatch.setenv("API_COOKIE_SAMESITE", "strict")
+        monkeypatch.setenv("COOKIE_SAMESITE", "strict")
         
         response = client.post("/token")
         

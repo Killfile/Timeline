@@ -19,13 +19,6 @@
   - `X-Client-Secret` header (string)
   - `Origin` header (string, optional)
 
-### TokenResponse
-- **represents**: token issuance response
-- **fields**:
-  - `access_token` (string)
-  - `token_type` (string, fixed: `Bearer`)
-  - `expires_in` (int, seconds)
-
 ### ReplayCacheEntry
 - **represents**: replay detection record for a `jti`
 - **fields**:

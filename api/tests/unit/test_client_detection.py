@@ -1,7 +1,6 @@
 """Unit tests for client detection utility."""
 
-import pytest
-from api.auth.client_detection import parse_user_agent, get_client_summary, ClientInfo
+from api.auth.client_detection import parse_user_agent, get_client_summary
 
 
 class TestParseUserAgent:

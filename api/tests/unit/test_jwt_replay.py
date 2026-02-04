@@ -18,13 +18,10 @@ import jwt
 def _build_test_config(ttl_seconds=900):
     """Helper to build AuthConfig with cookie fields."""
     return AuthConfig(
-        client_secret="test-secret",  # Obsolete but kept for backwards compat
         jwt_secret="jwt-secret",
         jwt_issuer="timeline-api",
         jwt_audience="timeline-frontend",
-        allowed_origins=("http://localhost",),  # Obsolete but kept for backwards compat
         token_ttl_seconds=ttl_seconds,
-        replay_window_seconds=900,
         rate_limit_per_minute=60,
         rate_limit_burst=10,
         cookie_name="test_auth",

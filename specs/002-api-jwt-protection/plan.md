@@ -95,7 +95,7 @@ docker-compose.yml
 4. **Frontend: token fetch & caching**
   - Fetch token on app load; cache in memory; refresh on reload.
 5. **Configuration**
-  - Add env vars: `API_CLIENT_SECRET`, `API_JWT_SECRET`, `API_ALLOWED_ORIGINS`, `API_TOKEN_TTL_SECONDS`, `API_TOKEN_REPLAY_WINDOW_SECONDS`.
+  - Add env vars: `API_JWT_SECRET`, `API_TOKEN_TTL_SECONDS`, `COOKIE_NAME`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, `COOKIE_DOMAIN`, `CORS_ALLOWED_ORIGINS`, `API_RATE_LIMIT_PER_MINUTE`, `API_RATE_LIMIT_BURST`.
 6. **Testing**
   - Unit tests for token issuance, invalid secret, rate limiting, token validation failure modes, replay rejection, and origin checks. Mock time and request headers.
 7. **Docs**

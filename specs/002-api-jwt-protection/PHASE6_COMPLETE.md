@@ -49,9 +49,9 @@ Updated health check guidance across documentation:
   - Included health check examples with proper authentication
 
 **Important Note**: `/health` now requires authentication. Monitoring systems and health checks must:
-1. Obtain a JWT token via `/token` endpoint first
-2. Include `Authorization: Bearer <token>` header in health check requests
-3. Include `Origin` header matching `API_ALLOWED_ORIGINS`
+1. Obtain a JWT token via `/token` endpoint first (stores in HTTP-only cookie)
+2. Include cookie in subsequent health check requests
+3. Include `Origin` header matching `CORS_ALLOWED_ORIGINS`
 
 ### T028: Quickstart Validation
 **Status**: ✅ Complete
@@ -180,16 +180,17 @@ All integration tests passing (10/11):
 
 All documentation includes warnings about:
 1. **Never use default secrets in production**
-   - Generate strong random secrets for `API_CLIENT_SECRET` and `API_JWT_SECRET`
+   - Generate strong random secrets for `API_JWT_SECRET`
    - Use environment-specific secrets
 
 2. **Restrict allowed origins**
-   - Set `API_ALLOWED_ORIGINS` to your actual domain(s)
+   - Set `CORS_ALLOWED_ORIGINS` to your actual domain(s)
    - Never use wildcards in production
 
 3. **Use HTTPS in production**
    - All API traffic should be encrypted
-   - JWT tokens contain sensitive claims
+   - Set `COOKIE_SECURE=true` to enforce HTTPS-only cookies
+   - JWT tokens are stored in HTTP-only cookies for security
 
 4. **Secure environment variables**
    - Store secrets in secure vault (e.g., AWS Secrets Manager, HashiCorp Vault)

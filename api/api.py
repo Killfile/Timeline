@@ -59,6 +59,12 @@ _token_rate_limiter: RateLimiter | None = None
 _auth_dependency = build_auth_dependency()
 
 
+def _reset_token_rate_limiter() -> None:
+    """Reset the global rate limiter. For testing only."""
+    global _token_rate_limiter
+    _token_rate_limiter = None
+
+
 def _get_token_rate_limiter(config: AuthConfig) -> RateLimiter:
     global _token_rate_limiter
     if _token_rate_limiter is None:
@@ -109,20 +115,14 @@ class TimelineStats(BaseModel):
     categories: List[str] = []
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-    expires_in: int
-
-
 @app.middleware("http")
 async def enforce_authentication(request: Request, call_next):
     # Allow CORS preflight requests
     if request.method == "OPTIONS":
         return await call_next(request)
     
-    # Skip authentication for /token endpoint
-    if request.url.path == "/token":
+    # Skip authentication for /token and /logout endpoints
+    if request.url.path in ("/token", "/logout"):
         return await call_next(request)
     
     # Enforce authentication on all other endpoints

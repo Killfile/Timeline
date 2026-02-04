@@ -9,9 +9,8 @@ from typing import Callable
 import jwt
 from fastapi import HTTPException, Request, status
 
-from .config import AuthConfig, is_origin_allowed, load_auth_config
+from .config import AuthConfig, load_auth_config
 from .jwt_service import decode_token
-from .replay_cache import ReplayCache
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +22,10 @@ class AuthContext:
 
 def build_auth_dependency(
     config: AuthConfig | None = None,
-    replay_cache: ReplayCache | None = None,
 ) -> Callable[[Request], AuthContext]:
     """Build a FastAPI dependency that enforces JWT cookie authentication."""
     if config is None:
         config = load_auth_config()
-    if replay_cache is None:
-        replay_cache = ReplayCache(config.replay_window_seconds)
 
     def _dependency(request: Request) -> AuthContext:
         client_ip = request.client.host if request.client else "unknown"

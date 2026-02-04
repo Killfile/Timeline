@@ -4,23 +4,29 @@
 
 Set these in the API service environment:
 
-- `API_CLIENT_SECRET`: shared secret used by frontend to obtain tokens
 - `API_JWT_SECRET`: signing key for JWTs (HMAC)
 - `API_JWT_ISSUER` (optional): issuer claim
 - `API_JWT_AUDIENCE` (optional): audience claim
-- `API_ALLOWED_ORIGINS`: comma-separated list of allowed frontend origins
 - `API_TOKEN_TTL_SECONDS`: token lifetime (default 900)
-- `API_TOKEN_REPLAY_WINDOW_SECONDS`: replay window for `jti` (default 900)
+- `COOKIE_NAME`: cookie name for auth token (default timeline_auth)
+- `COOKIE_SECURE`: set to true in production (default true)
+- `COOKIE_SAMESITE`: Strict, Lax, or None (default Strict)
+- `COOKIE_DOMAIN`: optional domain for cookie
+- `CORS_ALLOWED_ORIGINS`: comma-separated list of allowed frontend origins
+- `API_RATE_LIMIT_PER_MINUTE`: rate limit for token endpoint (default 60)
+- `API_RATE_LIMIT_BURST`: burst limit (default 10)
 
 ## Token Issuance
 
+Browsers automatically obtain tokens and store them in HTTP-only cookies:
+
 ```bash
 curl -X POST http://localhost:8000/token \
-  -H "X-Client-Secret: test-client-secret-12345" \
+  -c cookies.txt \
   -H "Origin: http://localhost:3000"
 ```
 
-Expected response:
+Expected response sets an HTTP-only cookie with the JWT:
 
 ```json
 {
