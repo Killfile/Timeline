@@ -1,0 +1,8 @@
+#!/bin/bash
+# Stop temporary test database and clean up
+# Usage: ./scripts/test-db-stop
+
+echo "Stopping and cleaning up test database..."
+docker-compose -f docker-compose.test.yml down -v
+
+echo "✓ Test database stopped and volumes removed"

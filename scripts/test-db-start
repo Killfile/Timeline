@@ -1,0 +1,36 @@
+#!/bin/bash
+# Start temporary test database for local integration testing
+# Usage: ./scripts/test-db-start
+# Then run: pytest tests/integration/ or POSTGRES_HOST=localhost pytest tests/integration/
+# Cleanup: ./scripts/test-db-stop
+
+set -e
+
+echo "Starting temporary test database..."
+docker-compose -f docker-compose.test.yml up -d
+
+# Wait for database to be ready
+echo "Waiting for test database to be ready..."
+max_attempts=30
+attempt=0
+while [ $attempt -lt $max_attempts ]; do
+    if docker-compose -f docker-compose.test.yml exec -T test-database pg_isready -U timeline_user > /dev/null 2>&1; then
+        echo "✓ Test database is ready"
+        break
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+done
+
+if [ $attempt -eq $max_attempts ]; then
+    echo "✗ Test database failed to start within 30 seconds"
+    exit 1
+fi
+
+echo ""
+echo "Test database is running on localhost:5433"
+echo "To run tests locally:"
+echo "  pytest api/tests/integration/"
+echo ""
+echo "To stop the test database:"
+echo "  ./scripts/test-db-stop"

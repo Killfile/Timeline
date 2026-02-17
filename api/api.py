@@ -1,6 +1,6 @@
 import os
 import logging
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Any, Dict
 from datetime import datetime
@@ -520,6 +520,195 @@ def admin_me(principal=Depends(require_roles({"admin"}))) -> Dict[str, Any]:
             "is_active": user["is_active"],
             "created_at": user["created_at"],
         }
+    finally:
+        conn.close()
+
+
+# User Management Endpoints
+
+@app.get("/admin/users")
+def list_users_endpoint(
+    limit: int = 20,
+    offset: int = 0,
+    email_filter: str = None,
+    role_filter: str = None,
+    active_only: bool = True,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """List all users with pagination and filtering."""
+    from services.user_service import list_users
+    
+    conn = get_db_connection()
+    try:
+        result = list_users(
+            conn,
+            limit=min(limit, 100),  # Cap at 100
+            offset=offset,
+            email_filter=email_filter,
+            role_filter=role_filter,
+            active_only=active_only,
+        )
+        logger.info(
+            "Listed users",
+            extra={"admin_id": principal.user_id, "count": len(result["users"]), "status_code": 200},
+        )
+        return result
+    except Exception as e:
+        logger.error("Failed to list users", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/users", status_code=status.HTTP_201_CREATED)
+def create_user_endpoint(
+    email: str = Body(...),
+    password: str = Body(...),
+    roles: List[str] = Body(...),
+    is_active: bool = Body(True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """Create a new user."""
+    from services.user_service import create_user
+    
+    conn = get_db_connection()
+    try:
+        user = create_user(conn, email=email, password=password, roles=roles, is_active=is_active)
+        logger.info(
+            "Created user",
+            extra={"admin_id": principal.user_id, "new_user_id": user["id"], "status_code": 201},
+        )
+        return user
+    except ValueError as e:
+        logger.warning("Failed to create user", extra={"error": str(e), "admin_id": principal.user_id})
+        if "already exists" in str(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to create user", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.get("/admin/users/{user_id}")
+def get_user_endpoint(
+    user_id: int,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """Get a user by ID."""
+    from services.user_service import get_user
+    
+    conn = get_db_connection()
+    try:
+        user = get_user(conn, user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        logger.info(
+            "Retrieved user",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 200},
+        )
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.patch("/admin/users/{user_id}")
+def update_user_endpoint(
+    user_id: int,
+    email: str = Body(None),
+    roles: List[str] = Body(None),
+    is_active: bool = Body(None),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """Update a user's information."""
+    from services.user_service import update_user
+    
+    # Prevent admin from deactivating themselves
+    if is_active is False and principal.user_id == str(user_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate your own account")
+    
+    conn = get_db_connection()
+    try:
+        user = update_user(conn, user_id, email=email, roles=roles, is_active=is_active)
+        logger.info(
+            "Updated user",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 200},
+        )
+        return user
+    except ValueError as e:
+        logger.warning("Failed to update user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        if "not found" in str(e):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        if "already in use" in str(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to update user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user_endpoint(
+    user_id: int,
+    principal=Depends(require_roles({"admin"})),
+):
+    """Delete (deactivate) a user."""
+    from services.user_service import delete_user
+    
+    # Prevent admin from deleting themselves
+    if principal.user_id == str(user_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+    
+    conn = get_db_connection()
+    try:
+        delete_user(conn, user_id)
+        logger.info(
+            "Deleted user",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 204},
+        )
+    except ValueError as e:
+        logger.warning("Failed to delete user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to delete user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/users/{user_id}/password")
+def change_password_endpoint(
+    user_id: int,
+    new_password: str = Body(..., embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, str]:
+    """Change a user's password."""
+    from services.user_service import change_user_password
+    
+    conn = get_db_connection()
+    try:
+        change_user_password(conn, user_id, new_password)
+        logger.info(
+            "Changed user password",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 200},
+        )
+        return {"message": "Password changed successfully"}
+    except ValueError as e:
+        logger.warning("Failed to change password", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        if "not found" in str(e):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to change password", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
     finally:
         conn.close()
 

@@ -78,14 +78,22 @@ description: "Task list for Admin Timeline Management implementation"
 
 ### Tests for User Story 2 (Required) ⚠️
 
-- [ ] T017 [P] [US2] Write unit tests for user service in api/tests/unit/test_user_service.py
-- [ ] T018 [P] [US2] Write integration tests for user endpoints in api/tests/integration/test_user_endpoints.py
+- [X] T017 [P] [US2] Write unit tests for user service in api/tests/unit/test_user_service.py
+- [X] T018 [P] [US2] Write integration tests for user endpoints in api/tests/integration/test_user_endpoints.py
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Implement user CRUD and role assignment service in api/services/user_service.py
-- [ ] T020 [US2] Implement /admin/users endpoints and /admin/users/{id}/password in api/api.py
-- [ ] T021 [US2] Add role assignment query helpers in api/models/user.py
+- [X] T019 [US2] Implement user CRUD and role assignment service in api/services/user_service.py
+- [X] T020 [US2] Implement /admin/users endpoints and /admin/users/{id}/password in api/api.py
+- [X] T021 [US2] Add role assignment query helpers in api/models/user.py (covered by fetch_user_roles)
+- [X] T021a [US2] Add user management UI section to frontend/candidate/admin.html (table, forms, modals)
+- [X] T021b [US2] Implement user CRUD operations in frontend/candidate/admin.js
+  - List users with search/filtering (by email, role, active status)
+  - Create user form with validation
+  - Edit user modal (email, roles, activation status)
+  - Delete user confirmation dialog
+  - Change password form with strength validation
+- [X] T021c [US2] Add user management styles in frontend/candidate/admin.css (table, forms, buttons, modals)
 
 **Checkpoint**: User Stories 1 AND 2 should both work independently. Desk test user CRUD and password change flows, then commit to the branch.
 
