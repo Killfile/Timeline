@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline Admin</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-page">
+        <header class="admin-header">
+            <div class="admin-title">
+                <h1>Timeline Admin</h1>
+                <p>Manage users and timelines</p>
+            </div>
+            <div class="admin-actions">
+                <button id="logout-button" class="btn btn-secondary" type="button">Logout</button>
+            </div>
+        </header>
+
+        <main class="admin-content">
+            <section id="status-panel" class="status-panel"></section>
+
+            <section id="auth-panel" class="auth-panel">
+                <h2>Sign in</h2>
+                <form id="login-form" class="login-form">
+                    <label>
+                        Email
+                        <input id="email-input" type="email" required placeholder="admin@example.com">
+                    </label>
+                    <label>
+                        Password
+                        <input id="password-input" type="password" required minlength="8" placeholder="••••••••">
+                    </label>
+                    <button class="btn btn-primary" type="submit">Sign in</button>
+                </form>
+                <p class="auth-help">Only admins can access this area.</p>
+            </section>
+
+            <section id="admin-panel" class="admin-panel hidden">
+                <div class="admin-card">
+                    <h3>Welcome</h3>
+                    <p id="admin-user"></p>
+                </div>
+
+                <div class="admin-grid">
+                    <div class="admin-card">
+                        <h3>User Management</h3>
+                        <p>Coming next: create, update, and deactivate users.</p>
+                    </div>
+                    <div class="admin-card">
+                        <h3>Timeline Categories</h3>
+                        <p>Coming next: upload JSON files and manage categories.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

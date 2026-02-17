@@ -24,8 +24,8 @@ description: "Task list for Admin Timeline Management implementation"
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create admin schema migration in database/migrations/005_add_admin_tables.sql
-- [ ] T002 [P] Add Argon2 and jsonschema dependencies in api/requirements.txt
+- [x] T001 Create admin schema migration in database/migrations/005_add_admin_tables.sql
+- [x] T002 [P] Add Argon2 and jsonschema dependencies in api/requirements.txt
 
 ---
 
@@ -35,14 +35,14 @@ description: "Task list for Admin Timeline Management implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 Implement password hashing utility in api/auth/password_service.py
-- [ ] T004 [P] Add RBAC dependencies (require_roles, require_scopes) in api/auth/rbac.py
-- [ ] T005 Update JWT claims to include roles/scopes in api/auth/jwt_service.py and update tests in api/tests/unit/test_jwt_service.py
-- [ ] T006 Update auth dependency to surface principal roles in api/auth/auth_dependency.py
-- [ ] T007 [P] Add user data access model helpers in api/models/user.py
-- [ ] T008 [P] Add category/upload data access model helpers in api/models/category.py
-- [ ] T009 [P] Write unit tests for password hashing in api/tests/unit/test_password_service.py
-- [ ] T010 [P] Write unit tests for RBAC dependencies in api/tests/unit/test_rbac.py
+- [x] T003 Implement password hashing utility in api/auth/password_service.py
+- [x] T004 [P] Add RBAC dependencies (require_roles, require_scopes) in api/auth/rbac.py
+- [x] T005 Update JWT claims to include roles/scopes in api/auth/jwt_service.py and update tests in api/tests/unit/test_jwt_service.py
+- [x] T006 Update auth dependency to surface principal roles in api/auth/auth_dependency.py
+- [x] T007 [P] Add user data access model helpers in api/models/user.py
+- [x] T008 [P] Add category/upload data access model helpers in api/models/category.py
+- [x] T009 [P] Write unit tests for password hashing in api/tests/unit/test_password_service.py
+- [x] T010 [P] Write unit tests for RBAC dependencies in api/tests/unit/test_rbac.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -56,15 +56,15 @@ description: "Task list for Admin Timeline Management implementation"
 
 ### Tests for User Story 1 (Required) ⚠️
 
-- [ ] T011 [P] [US1] Add integration tests for admin login/logout/me in api/tests/integration/test_admin_auth.py
+- [x] T011 [P] [US1] Add integration tests for admin login/logout/me in api/tests/integration/test_admin_auth.py
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Implement /admin/login, /admin/logout, /admin/me endpoints in api/api.py
-- [ ] T013 [US1] Add admin page shell in frontend/candidate/admin.html
-- [ ] T014 [US1] Implement admin login flow and session check in frontend/candidate/admin.js
-- [ ] T015 [US1] Add admin page styles in frontend/candidate/admin.css
-- [ ] T016 [US1] Add admin page navigation link in frontend/candidate/index.html
+- [x] T012 [US1] Implement /admin/login, /admin/logout, /admin/me endpoints in api/api.py
+- [x] T013 [US1] Add admin page shell in frontend/candidate/admin.html
+- [x] T014 [US1] Implement admin login flow and session check in frontend/candidate/admin.js
+- [x] T015 [US1] Add admin page styles in frontend/candidate/admin.css
+- [x] T016 [US1] Add admin page navigation link in frontend/candidate/index.html
 
 **Checkpoint**: User Story 1 should be fully functional and testable independently. Desk test the admin login/logout/me flow, then commit to the branch.
 

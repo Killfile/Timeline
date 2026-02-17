@@ -1,18 +1,21 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from auth.auth_dependency import build_auth_dependency
 from auth.client_detection import parse_user_agent, get_client_summary
 from auth.config import AuthConfig, load_auth_config
 from auth.jwt_service import generate_token
+from auth.password_service import verify_password
 from auth.rate_limiter import RateLimiter
+from auth.rbac import require_roles, require_scopes
+from models.user import fetch_user_by_email, fetch_user_by_id, fetch_user_roles
 
 # Configure logging
 logging.basicConfig(
@@ -108,6 +111,22 @@ class HistoricalEvent(BaseModel):
     strategy: Optional[str] = None  # Ingestion strategy that generated this event
 
 
+class AdminLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AdminUserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    roles: List[str]
+
+
+class AdminLoginResponse(BaseModel):
+    message: str
+    user: AdminUserResponse
+
+
 class TimelineStats(BaseModel):
     total_events: int
     earliest_year: Optional[int] = None
@@ -121,11 +140,28 @@ async def enforce_authentication(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     
-    # Skip authentication for /token and /logout endpoints
-    if request.url.path in ("/token", "/logout"):
+    # Unauthenticated endpoints (no JWT required)
+    unauthenticated_paths = {
+        "/admin/login",  # Admin login endpoint
+        "/token",        # Anonymous token issuance
+        "/logout",       # Logout endpoint
+        "/health",       # Health check
+    }
+    
+    # Check if path is unauthenticated or static assets
+    path = request.url.path
+    is_unauthenticated = (
+        path in unauthenticated_paths or
+        path.startswith("/static/") or
+        path == "/"
+    )
+    
+    if is_unauthenticated:
         return await call_next(request)
     
-    # Enforce authentication on all other endpoints
+    # All other endpoints require JWT authentication (including /events, /categories, etc.)
+    # Anonymous tokens with "public" scope can access read-only endpoints
+    # Admin tokens with roles can access admin endpoints
     try:
         _auth_dependency(request)
     except HTTPException as exc:
@@ -259,8 +295,13 @@ def issue_token(request: Request, response: Response) -> Dict[str, Any]:
         )
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
 
-    # Generate token
-    token_payload = generate_token(config)
+    # Generate anonymous token with read-only 'public' scope
+    token_payload = generate_token(
+        config,
+        user_id="anonymous",
+        roles=[],
+        scopes=["public"]
+    )
     
     # Set cookie with JWT
     response.set_cookie(
@@ -330,6 +371,157 @@ def logout(request: Request, response: Response) -> Dict[str, str]:
         "status": "success",
         "message": "Logged out successfully",
     }
+
+
+@app.post("/admin/login", response_model=AdminLoginResponse)
+def admin_login(
+    request: Request,
+    response: Response,
+    payload: AdminLoginRequest,
+) -> AdminLoginResponse:
+    """Authenticate an admin user and issue a JWT cookie."""
+    try:
+        config = load_auth_config()
+    except ValueError as exc:
+        logger.error("Failed to load auth config", extra={"error": str(exc)})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    client_ip = request.client.host if request.client else "unknown"
+
+    limiter = _get_token_rate_limiter(config)
+    if not limiter.allow(client_ip):
+        logger.warning(
+            "Admin login rate limit exceeded",
+            extra={
+                "client_ip": client_ip,
+                "status_code": 429,
+            },
+        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+
+    conn = get_db_connection()
+    try:
+        user = fetch_user_by_email(conn, payload.email)
+        if not user:
+            logger.warning(
+                "Admin login failed: unknown email",
+                extra={"client_ip": client_ip, "status_code": 401},
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+        if not user["is_active"]:
+            logger.warning(
+                "Admin login failed: inactive account",
+                extra={"client_ip": client_ip, "user_id": user["id"], "status_code": 401},
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is inactive")
+
+        if not verify_password(user["password_hash"], payload.password):
+            logger.warning(
+                "Admin login failed: invalid password",
+                extra={"client_ip": client_ip, "user_id": user["id"], "status_code": 401},
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+        roles = fetch_user_roles(conn, user["id"])
+        
+        # Determine scopes based on roles
+        # Admin role grants both public (read) and admin (write/manage) scopes
+        scopes = ["public"]  # All authenticated users get public scope
+        if "admin" in roles:
+            scopes.append("admin")
+        
+        token_payload = generate_token(
+            config,
+            user_id=str(user["id"]),
+            roles=roles,
+            scopes=scopes,
+        )
+
+        response.set_cookie(
+            key=config.cookie_name,
+            value=token_payload.token,
+            max_age=token_payload.expires_in,
+            httponly=True,
+            secure=config.cookie_secure,
+            samesite=config.cookie_samesite,
+            domain=config.cookie_domain,
+        )
+
+        logger.info(
+            "Admin login successful",
+            extra={
+                "client_ip": client_ip,
+                "user_id": user["id"],
+                "roles": roles,
+                "status_code": 200,
+            },
+        )
+
+        return AdminLoginResponse(
+            message="Login successful",
+            user=AdminUserResponse(
+                id=user["id"],
+                email=user["email"],
+                roles=roles,
+            ),
+        )
+    finally:
+        conn.close()
+
+
+@app.post("/admin/logout")
+def admin_logout(
+    response: Response,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, str]:
+    """Clear the admin authentication cookie to log out."""
+    try:
+        config = load_auth_config()
+    except ValueError as exc:
+        logger.error("Failed to load auth config", extra={"error": str(exc)})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    response.set_cookie(
+        key=config.cookie_name,
+        value="",
+        max_age=0,
+        httponly=True,
+        secure=config.cookie_secure,
+        samesite=config.cookie_samesite,
+        domain=config.cookie_domain,
+    )
+
+    logger.info(
+        "Admin logout",
+        extra={"user_id": principal.user_id, "status_code": 200},
+    )
+
+    return {"message": "Logout successful"}
+
+
+@app.get("/admin/me")
+def admin_me(principal=Depends(require_roles({"admin"}))) -> Dict[str, Any]:
+    """Return the current admin user's profile."""
+    if principal.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    conn = get_db_connection()
+    try:
+        user = fetch_user_by_id(conn, int(principal.user_id))
+        if not user or not user["is_active"]:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+
+        roles = fetch_user_roles(conn, user["id"])
+        return {
+            "id": user["id"],
+            "email": user["email"],
+            "roles": roles,
+            "is_active": user["is_active"],
+            "created_at": user["created_at"],
+        }
+    finally:
+        conn.close()
 
 
 def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
@@ -463,7 +655,8 @@ def get_events(
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
     viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
     limit: int = Query(100, ge=1, le=1000, description="Number of events to return"),
-    offset: int = Query(0, ge=0, description="Offset for pagination")
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """Get historical events with optional filters.
     
@@ -667,7 +860,8 @@ def get_events_by_bins(
     zone: str = Query(..., description="Which zone to load: 'left', 'center', or 'right'"),
     category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
     strategy: Optional[List[str]] = Query(None, description="Filter by strategies (can specify multiple)"),
-    limit: int = Query(100, ge=1, le=1000, description="Number of events to return per bin")
+    limit: int = Query(100, ge=1, le=1000, description="Number of events to return per bin"),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """
     Load events for a 5-bin zone in the 15-bin timeline system.
@@ -818,6 +1012,7 @@ def get_events_count(
     viewport_end: Optional[int] = Query(None, description="Viewport end year"),
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
     viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """Get count of events matching filters. Used to populate 'Events in Scope' stat.
     
@@ -896,7 +1091,7 @@ def get_events_count(
 
 
 @app.get("/events/{event_id}", response_model=HistoricalEvent)
-def get_event(event_id: int):
+def get_event(event_id: int, _principal=Depends(require_scopes(["public"]))):
     """Get a specific historical event by ID."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -931,7 +1126,7 @@ def get_event(event_id: int):
 
 
 @app.get("/events/{event_id}/extraction-debug", response_model=ExtractionDebug)
-def get_event_extraction_debug(event_id: int):
+def get_event_extraction_debug(event_id: int, _principal=Depends(require_scopes(["public"]))):
     """Get the extraction observability record for a given event."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -978,7 +1173,7 @@ def get_event_extraction_debug(event_id: int):
 
 
 @app.get("/stats", response_model=TimelineStats)
-def get_stats():
+def get_stats(_principal=Depends(require_scopes(["public"]))):
     """Get timeline statistics."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1015,7 +1210,7 @@ def get_stats():
 
 
 @app.get("/categories")
-def get_categories():
+def get_categories(_principal=Depends(require_scopes(["public"]))):
     """Get list of all categories (both Wikipedia and LLM-enriched).
     
     Returns a combined list of categories from:
@@ -1173,7 +1368,8 @@ def get_events_count(
 @app.get("/search", response_model=List[HistoricalEvent])
 def search_events(
     q: str = Query(..., min_length=3, description="Search query"),
-    limit: int = Query(50, ge=1, le=100)
+    limit: int = Query(50, ge=1, le=100),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """Search historical events by title and description."""
     conn = get_db_connection()

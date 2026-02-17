@@ -23,7 +23,7 @@ def _build_config() -> AuthConfig:
 
 def test_generate_and_decode_token_round_trip() -> None:
     config = _build_config()
-    payload = generate_token(config)
+    payload = generate_token(config, user_id="user-1", roles=["admin"], scopes=["users:write"])
 
     assert payload.token
     assert payload.expires_in == 60
@@ -32,6 +32,9 @@ def test_generate_and_decode_token_round_trip() -> None:
     assert "iat" in claims
     assert "exp" in claims
     assert "jti" in claims
+    assert claims["sub"] == "user-1"
+    assert claims["roles"] == ["admin"]
+    assert claims["scopes"] == ["users:write"]
 
 
 def test_decode_token_requires_jti() -> None:

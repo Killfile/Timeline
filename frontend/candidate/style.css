@@ -176,6 +176,14 @@ body {
     position: relative;
 }
 
+.fab-link {
+    text-decoration: none;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .fab-item:hover {
     transform: scale(1.1);
     background: rgba(240, 147, 251, 0.9);
