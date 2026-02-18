@@ -399,10 +399,14 @@ def process_upload(
                 event_key_input = f"{event.get('title')}|{event.get('start_year')}|{event.get('end_year')}|{event.get('description')}"
                 event_key = hashlib.sha256(event_key_input.encode()).hexdigest()
                 
-                # Calculate weight from precision and span
-                precision = event.get("precision", 1.0)
-                span_days = abs(event.get("end_year", event.get("start_year")) - event.get("start_year", 0)) * 365
-                weight = int(precision * span_days) if precision and span_days else 0
+                # Prefer uploaded weight; fall back to computed weight if missing
+                if "weight" in event and event.get("weight") is not None:
+                    weight = int(event.get("weight"))
+                else:
+                    # Calculate weight from precision and span as a fallback
+                    precision = event.get("precision", 1.0)
+                    span_days = abs(event.get("end_year", event.get("start_year")) - event.get("start_year", 0)) * 365
+                    weight = int(precision * span_days) if precision and span_days else 0
                 
                 cur.execute("""
                     INSERT INTO historical_events (
