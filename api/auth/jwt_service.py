@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Iterable
 from uuid import uuid4
 
 import jwt
@@ -24,15 +24,27 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def generate_token(config: AuthConfig) -> TokenPayload:
+def generate_token(
+    config: AuthConfig,
+    user_id: str = "anonymous",
+    roles: Iterable[str] | None = None,
+    scopes: Iterable[str] | None = None,
+) -> TokenPayload:
     issued_at = _utcnow()
     expires_at = issued_at + timedelta(seconds=config.token_ttl_seconds)
     token_id = str(uuid4())
 
+    roles_list = list(roles or [])
+    # Default to 'public' scope for anonymous tokens if no scopes provided
+    scopes_list = list(scopes or ["public"])
+
     claims: dict[str, Any] = {
+        "sub": user_id,
         "iat": int(issued_at.timestamp()),
         "exp": int(expires_at.timestamp()),
         "jti": token_id,
+        "roles": roles_list,
+        "scopes": scopes_list,
     }
 
     if config.jwt_issuer:

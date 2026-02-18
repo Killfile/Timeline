@@ -1,0 +1,473 @@
+openapi: 3.0.3
+info:
+  title: Timeline Admin - User Management API
+  description: |
+    User management endpoints for admin timeline management.
+    Provides CRUD operations on users and role assignments.
+    All endpoints require admin role.
+  version: 1.0.0
+  contact:
+    name: Timeline Admin Support
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.timeline.example.com
+    description: Production server
+
+paths:
+  /admin/users:
+    get:
+      summary: List all users
+      description: |
+        Retrieve a paginated list of all users with their roles.
+        Requires admin role.
+      operationId: listUsers
+      tags:
+        - Users
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of users to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of users to skip
+        - name: email_filter
+          in: query
+          schema:
+            type: string
+          description: Filter users by email (partial match)
+        - name: role_filter
+          in: query
+          schema:
+            type: string
+            enum: [admin, user]
+          description: Filter users by role
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: true
+          description: Include only active users
+      responses:
+        '200':
+          description: List of users retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  total:
+                    type: integer
+                    description: Total number of users matching filters
+                    example: 42
+                  limit:
+                    type: integer
+                    example: 20
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create new user
+      description: |
+        Create a new user account with specified email, password, and roles.
+        Requires admin role.
+      operationId: createUser
+      tags:
+        - Users
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                weakPassword:
+                  value:
+                    detail: Password must be at least 8 characters
+                invalidEmail:
+                  value:
+                    detail: Invalid email format
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: User with this email already exists
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{user_id}:
+    get:
+      summary: Get user by ID
+      description: |
+        Retrieve detailed information about a specific user.
+        Requires admin role.
+      operationId: getUser
+      tags:
+        - Users
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: User not found
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      summary: Update user
+      description: |
+        Update user information (email, active status, roles).
+        Requires admin role. Cannot update self.
+      operationId: updateUser
+      tags:
+        - Users
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidEmail:
+                  value:
+                    detail: Invalid email format
+                cannotDeactivateSelf:
+                  value:
+                    detail: Cannot deactivate your own account
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: Delete user
+      description: |
+        Deactivate a user account (soft delete).
+        Requires admin role. Cannot delete self.
+      operationId: deleteUser
+      tags:
+        - Users
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '204':
+          description: User deactivated successfully
+        '400':
+          description: Cannot delete self
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Cannot delete your own account
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/users/{user_id}/password:
+    post:
+      summary: Change user password
+      description: |
+        Change a user's password.
+        Requires admin role. Admins can change any user's password.
+      operationId: changeUserPassword
+      tags:
+        - Users
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - new_password
+              properties:
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: New password (min 8 characters)
+                  example: newSecurePassword456
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password changed successfully
+        '400':
+          description: Invalid password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Password must be at least 8 characters
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: timeline_auth
+      description: JWT token stored in HttpOnly cookie
+
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: User ID
+
+  schemas:
+    User:
+      type: object
+      required:
+        - id
+        - email
+        - roles
+        - is_active
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: admin@example.com
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [admin, user]
+          example: ["admin"]
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-01-15T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-02-10T14:22:00Z
+
+    UserCreate:
+      type: object
+      required:
+        - email
+        - password
+        - roles
+      properties:
+        email:
+          type: string
+          format: email
+          description: User email address (unique)
+          example: newadmin@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: User password (min 8 characters)
+          example: securePassword123
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [admin, user]
+          minItems: 1
+          description: Roles to assign to user
+          example: ["admin"]
+        is_active:
+          type: boolean
+          default: true
+          description: User active status
+          example: true
+
+    UserUpdate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: New email address
+          example: newemail@example.com
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [admin, user]
+          description: Updated roles
+          example: ["user"]
+        is_active:
+          type: boolean
+          description: Updated active status
+          example: false
+
+    Error:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Not authenticated
+
+    Forbidden:
+      description: Insufficient permissions (admin role required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Required roles: admin
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Internal server error
+
+security:
+  - cookieAuth: []

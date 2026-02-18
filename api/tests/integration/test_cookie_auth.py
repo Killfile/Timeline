@@ -82,10 +82,10 @@ class TestTokenEndpoint:
 
 class TestProtectedEndpoints:
     """Tests for protected endpoints with cookie authentication."""
-
-    def test_missing_cookie_returns_401(self, client, auth_env):
-        """Test that missing cookie returns 401."""
-        response = client.get("/events")
+    def test_missing_cookie_returns_401_on_protected_endpoint(self, client, auth_env):
+        """Test that missing cookie returns 401 on protected endpoints."""
+        # /admin/users is a protected endpoint that requires authentication
+        response = client.get("/admin/users")
         
         assert response.status_code == 401
         assert "cookie" in response.json()["detail"].lower()
@@ -98,19 +98,20 @@ class TestProtectedEndpoints:
         assert "timeline_auth_test" in token_response.cookies
         
         # Use TestClient's automatic cookie handling - cookie is sent automatically
-        response = client.get("/events")
+        # Test on a protected endpoint
+        response = client.get("/admin/users")
         
-        # Should not be 401 (actual response depends on endpoint implementation)
+        # Should not be 401 (actual response depends on endpoint implementation and roles)
         assert response.status_code != 401
 
-    def test_invalid_cookie_returns_401(self, client, auth_env):
-        """Test that invalid cookie returns 401."""
-        response = client.get("/events", cookies={"timeline_auth_test": "invalid-token"})
+    def test_invalid_cookie_returns_401_on_protected_endpoint(self, client, auth_env):
+        """Test that invalid cookie returns 401 on protected endpoints."""
+        response = client.get("/admin/users", cookies={"timeline_auth_test": "invalid-token"})
         
         assert response.status_code == 401
 
-    def test_expired_cookie_returns_401(self, client, auth_env):
-        """Test that expired cookie returns 401."""
+    def test_expired_cookie_returns_401_on_protected_endpoint(self, client, auth_env):
+        """Test that expired cookie returns 401 on protected endpoints."""
         import jwt
         from api.auth.config import load_auth_config
         from datetime import datetime, timezone, timedelta
@@ -130,8 +131,8 @@ class TestProtectedEndpoints:
         # Set the expired cookie
         client.cookies.set("timeline_auth_test", expired_token)
         
-        # Try to use expired cookie
-        response = client.get("/events")
+        # Try to use expired cookie on a protected endpoint
+        response = client.get("/admin/users")
         
         assert response.status_code == 401
         assert "expired" in response.json()["detail"].lower()

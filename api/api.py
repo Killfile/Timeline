@@ -1,18 +1,21 @@
 import os
 import logging
-from fastapi import FastAPI, HTTPException, Query, Request, Response, status
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
-from auth.auth_dependency import build_auth_dependency
-from auth.client_detection import parse_user_agent, get_client_summary
-from auth.config import AuthConfig, load_auth_config
-from auth.jwt_service import generate_token
-from auth.rate_limiter import RateLimiter
+from .auth.auth_dependency import build_auth_dependency
+from .auth.client_detection import parse_user_agent, get_client_summary
+from .auth.config import AuthConfig, load_auth_config
+from .auth.jwt_service import generate_token
+from .auth.password_service import verify_password
+from .auth.rate_limiter import RateLimiter
+from .auth.rbac import require_roles, require_scopes
+from .models.user import fetch_user_by_email, fetch_user_by_id, fetch_user_roles
 
 # Configure logging
 logging.basicConfig(
@@ -108,6 +111,22 @@ class HistoricalEvent(BaseModel):
     strategy: Optional[str] = None  # Ingestion strategy that generated this event
 
 
+class AdminLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AdminUserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    roles: List[str]
+
+
+class AdminLoginResponse(BaseModel):
+    message: str
+    user: AdminUserResponse
+
+
 class TimelineStats(BaseModel):
     total_events: int
     earliest_year: Optional[int] = None
@@ -121,11 +140,28 @@ async def enforce_authentication(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     
-    # Skip authentication for /token and /logout endpoints
-    if request.url.path in ("/token", "/logout"):
+    # Unauthenticated endpoints (no JWT required)
+    unauthenticated_paths = {
+        "/admin/login",  # Admin login endpoint
+        "/token",        # Anonymous token issuance
+        "/logout",       # Logout endpoint
+        "/health",       # Health check
+    }
+    
+    # Check if path is unauthenticated or static assets
+    path = request.url.path
+    is_unauthenticated = (
+        path in unauthenticated_paths or
+        path.startswith("/static/") or
+        path == "/"
+    )
+    
+    if is_unauthenticated:
         return await call_next(request)
     
-    # Enforce authentication on all other endpoints
+    # All other endpoints require JWT authentication (including /events, /categories, etc.)
+    # Anonymous tokens with "public" scope can access read-only endpoints
+    # Admin tokens with roles can access admin endpoints
     try:
         _auth_dependency(request)
     except HTTPException as exc:
@@ -259,8 +295,13 @@ def issue_token(request: Request, response: Response) -> Dict[str, Any]:
         )
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
 
-    # Generate token
-    token_payload = generate_token(config)
+    # Generate anonymous token with read-only 'public' scope
+    token_payload = generate_token(
+        config,
+        user_id="anonymous",
+        roles=[],
+        scopes=["public"]
+    )
     
     # Set cookie with JWT
     response.set_cookie(
@@ -330,6 +371,594 @@ def logout(request: Request, response: Response) -> Dict[str, str]:
         "status": "success",
         "message": "Logged out successfully",
     }
+
+
+@app.post("/admin/login", response_model=AdminLoginResponse)
+def admin_login(
+    request: Request,
+    response: Response,
+    payload: AdminLoginRequest,
+) -> AdminLoginResponse:
+    """Authenticate an admin user and issue a JWT cookie."""
+    try:
+        config = load_auth_config()
+    except ValueError as exc:
+        logger.error("Failed to load auth config", extra={"error": str(exc)})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    client_ip = request.client.host if request.client else "unknown"
+
+    limiter = _get_token_rate_limiter(config)
+    if not limiter.allow(client_ip):
+        logger.warning(
+            "Admin login rate limit exceeded",
+            extra={
+                "client_ip": client_ip,
+                "status_code": 429,
+            },
+        )
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+
+    conn = get_db_connection()
+    try:
+        user = fetch_user_by_email(conn, payload.email)
+        if not user:
+            logger.warning(
+                "Admin login failed: unknown email",
+                extra={"client_ip": client_ip, "status_code": 401},
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+        if not user["is_active"]:
+            logger.warning(
+                "Admin login failed: inactive account",
+                extra={"client_ip": client_ip, "user_id": user["id"], "status_code": 401},
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is inactive")
+
+        if not verify_password(user["password_hash"], payload.password):
+            logger.warning(
+                "Admin login failed: invalid password",
+                extra={"client_ip": client_ip, "user_id": user["id"], "status_code": 401},
+            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+        roles = fetch_user_roles(conn, user["id"])
+        
+        # Determine scopes based on roles
+        # Admin role grants both public (read) and admin (write/manage) scopes
+        scopes = ["public"]  # All authenticated users get public scope
+        if "admin" in roles:
+            scopes.append("admin")
+        
+        token_payload = generate_token(
+            config,
+            user_id=str(user["id"]),
+            roles=roles,
+            scopes=scopes,
+        )
+
+        response.set_cookie(
+            key=config.cookie_name,
+            value=token_payload.token,
+            max_age=token_payload.expires_in,
+            httponly=True,
+            secure=config.cookie_secure,
+            samesite=config.cookie_samesite,
+            domain=config.cookie_domain,
+        )
+
+        logger.info(
+            "Admin login successful",
+            extra={
+                "client_ip": client_ip,
+                "user_id": user["id"],
+                "roles": roles,
+                "status_code": 200,
+            },
+        )
+
+        return AdminLoginResponse(
+            message="Login successful",
+            user=AdminUserResponse(
+                id=user["id"],
+                email=user["email"],
+                roles=roles,
+            ),
+        )
+    finally:
+        conn.close()
+
+
+@app.post("/admin/logout")
+def admin_logout(
+    response: Response,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, str]:
+    """Clear the admin authentication cookie to log out."""
+    try:
+        config = load_auth_config()
+    except ValueError as exc:
+        logger.error("Failed to load auth config", extra={"error": str(exc)})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    response.set_cookie(
+        key=config.cookie_name,
+        value="",
+        max_age=0,
+        httponly=True,
+        secure=config.cookie_secure,
+        samesite=config.cookie_samesite,
+        domain=config.cookie_domain,
+    )
+
+    logger.info(
+        "Admin logout",
+        extra={"user_id": principal.user_id, "status_code": 200},
+    )
+
+    return {"message": "Logout successful"}
+
+
+@app.get("/admin/me")
+def admin_me(principal=Depends(require_roles({"admin"}))) -> Dict[str, Any]:
+    """Return the current admin user's profile."""
+    if principal.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    conn = get_db_connection()
+    try:
+        user = fetch_user_by_id(conn, int(principal.user_id))
+        if not user or not user["is_active"]:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+
+        roles = fetch_user_roles(conn, user["id"])
+        return {
+            "id": user["id"],
+            "email": user["email"],
+            "roles": roles,
+            "is_active": user["is_active"],
+            "created_at": user["created_at"],
+        }
+    finally:
+        conn.close()
+
+
+# User Management Endpoints
+
+@app.get("/admin/users")
+def list_users_endpoint(
+    limit: int = 20,
+    offset: int = 0,
+    email_filter: str = None,
+    role_filter: str = None,
+    active_only: bool = True,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """List all users with pagination and filtering."""
+    from .services.user_service import list_users
+    
+    conn = get_db_connection()
+    try:
+        result = list_users(
+            conn,
+            limit=min(limit, 100),  # Cap at 100
+            offset=offset,
+            email_filter=email_filter,
+            role_filter=role_filter,
+            active_only=active_only,
+        )
+        logger.info(
+            "Listed users",
+            extra={"admin_id": principal.user_id, "count": len(result["users"]), "status_code": 200},
+        )
+        return result
+    except Exception as e:
+        logger.error("Failed to list users", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/users", status_code=status.HTTP_201_CREATED)
+def create_user_endpoint(
+    email: str = Body(...),
+    password: str = Body(...),
+    roles: List[str] = Body(...),
+    is_active: bool = Body(True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """Create a new user."""
+    from .services.user_service import create_user
+    
+    conn = get_db_connection()
+    try:
+        user = create_user(conn, email=email, password=password, roles=roles, is_active=is_active)
+        logger.info(
+            "Created user",
+            extra={"admin_id": principal.user_id, "new_user_id": user["id"], "status_code": 201},
+        )
+        return user
+    except ValueError as e:
+        logger.warning("Failed to create user", extra={"error": str(e), "admin_id": principal.user_id})
+        if "already exists" in str(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to create user", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.get("/admin/users/{user_id}")
+def get_user_endpoint(
+    user_id: int,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """Get a user by ID."""
+    from .services.user_service import get_user
+    
+    conn = get_db_connection()
+    try:
+        user = get_user(conn, user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        logger.info(
+            "Retrieved user",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 200},
+        )
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.patch("/admin/users/{user_id}")
+def update_user_endpoint(
+    user_id: int,
+    email: str = Body(None),
+    roles: List[str] = Body(None),
+    is_active: bool = Body(None),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, Any]:
+    """Update a user's information."""
+    from .services.user_service import update_user
+    
+    # Prevent admin from deactivating themselves
+    if is_active is False and principal.user_id == str(user_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot deactivate your own account")
+    
+    conn = get_db_connection()
+    try:
+        user = update_user(conn, user_id, email=email, roles=roles, is_active=is_active)
+        logger.info(
+            "Updated user",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 200},
+        )
+        return user
+    except ValueError as e:
+        logger.warning("Failed to update user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        if "not found" in str(e):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        if "already in use" in str(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to update user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user_endpoint(
+    user_id: int,
+    principal=Depends(require_roles({"admin"})),
+):
+    """Delete (deactivate) a user."""
+    from .services.user_service import delete_user
+    
+    # Prevent admin from deleting themselves
+    if principal.user_id == str(user_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete your own account")
+    
+    conn = get_db_connection()
+    try:
+        delete_user(conn, user_id)
+        logger.info(
+            "Deleted user",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 204},
+        )
+    except ValueError as e:
+        logger.warning("Failed to delete user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to delete user", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/users/{user_id}/password")
+def change_password_endpoint(
+    user_id: int,
+    new_password: str = Body(..., embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict[str, str]:
+    """Change a user's password."""
+    from .services.user_service import change_user_password
+    
+    conn = get_db_connection()
+    try:
+        change_user_password(conn, user_id, new_password)
+        logger.info(
+            "Changed user password",
+            extra={"admin_id": principal.user_id, "user_id": user_id, "status_code": 200},
+        )
+        return {"message": "Password changed successfully"}
+    except ValueError as e:
+        logger.warning("Failed to change password", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        if "not found" in str(e):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ===== Category Management Endpoints =====
+
+
+@app.get("/admin/categories")
+def list_categories_endpoint(
+    strategy: Optional[str] = None,
+    principal=Depends(require_roles({"admin"})),
+) -> List[Dict]:
+    """List all timeline categories, optionally filtered by strategy."""
+    from .services.category_service import list_categories
+    
+    conn = get_db_connection()
+    try:
+        categories = list_categories(conn)
+        
+        # Filter by strategy if provided
+        if strategy:
+            categories = [c for c in categories if c.get("strategy_name") == strategy]
+        
+        logger.info(
+            "Listed categories",
+            extra={"admin_id": principal.user_id, "count": len(categories), "status_code": 200},
+        )
+        return categories
+    except Exception as e:
+        logger.error("Failed to list categories", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/categories", status_code=status.HTTP_201_CREATED)
+def create_category_endpoint(
+    name: str = Body(..., embed=True),
+    description: Optional[str] = Body(None, embed=True),
+    strategy_name: Optional[str] = Body(None, embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Create a new timeline category."""
+    from .services.category_service import create_category
+    
+    conn = get_db_connection()
+    try:
+        category = create_category(
+            conn,
+            name=name,
+            description=description,
+            strategy_name=strategy_name,
+            created_by=principal.user_id
+        )
+        logger.info(
+            "Created category",
+            extra={"admin_id": principal.user_id, "category_id": category["id"], "status_code": 201},
+        )
+        return category
+    except ValueError as e:
+        logger.warning("Failed to create category", extra={"error": str(e), "admin_id": principal.user_id})
+        if "already exists" in str(e):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to create category", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.get("/admin/categories/{category_id}")
+def get_category_endpoint(
+    category_id: int,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Get a specific category by ID."""
+    from .services.category_service import get_category
+    
+    conn = get_db_connection()
+    try:
+        category = get_category(conn, category_id)
+        if not category:
+            logger.warning("Category not found", extra={"admin_id": principal.user_id, "category_id": category_id})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        
+        logger.info(
+            "Retrieved category",
+            extra={"admin_id": principal.user_id, "category_id": category_id, "status_code": 200},
+        )
+        return category
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.patch("/admin/categories/{category_id}")
+def update_category_endpoint(
+    category_id: int,
+    name: Optional[str] = Body(None, embed=True),
+    description: Optional[str] = Body(None, embed=True),
+    strategy_name: Optional[str] = Body(None, embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Update a category."""
+    from .services.category_service import update_category
+    
+    conn = get_db_connection()
+    try:
+        category = update_category(
+            conn,
+            category_id=category_id,
+            name=name,
+            description=description,
+            strategy_name=strategy_name
+        )
+        if not category:
+            logger.warning("Category not found", extra={"admin_id": principal.user_id, "category_id": category_id})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        
+        logger.info(
+            "Updated category",
+            extra={"admin_id": principal.user_id, "category_id": category_id, "status_code": 200},
+        )
+        return category
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Failed to update category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to update category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category_endpoint(
+    category_id: int,
+    principal=Depends(require_roles({"admin"})),
+):
+    """Delete a category."""
+    from .services.category_service import delete_category
+    
+    conn = get_db_connection()
+    try:
+        deleted = delete_category(conn, category_id)
+        if not deleted:
+            logger.warning("Category not found", extra={"admin_id": principal.user_id, "category_id": category_id})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        
+        logger.info(
+            "Deleted category",
+            extra={"admin_id": principal.user_id, "category_id": category_id, "status_code": 204},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/uploads", status_code=status.HTTP_201_CREATED)
+def upload_json_endpoint(
+    category_name: str = Body(..., embed=True),
+    json_data: Dict = Body(..., embed=True),
+    overwrite: bool = Body(False, embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Upload JSON data to create or update a timeline category."""
+    from .services.category_service import validate_import_schema, process_upload
+    
+    # Validate schema first
+    is_valid, errors = validate_import_schema(json_data)
+    if not is_valid:
+        logger.warning("Invalid upload schema", extra={"admin_id": principal.user_id, "errors": errors})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid schema: {errors}")
+    
+    conn = get_db_connection()
+    try:
+        result = process_upload(
+            conn,
+            upload_data=json_data,
+            category_name=category_name,
+            uploaded_by=principal.user_id,
+            overwrite=overwrite
+        )
+        
+        logger.info(
+            "Uploaded category JSON",
+            extra={
+                "admin_id": principal.user_id,
+                "category_id": result["category_id"],
+                "events_inserted": result["events_inserted"],
+                "status_code": 201
+            },
+        )
+        return result
+    except ValueError as e:
+        logger.warning("Failed to upload", extra={"error": str(e), "admin_id": principal.user_id})
+        if "already exists" in str(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        import traceback
+        logger.error("Failed to upload category", extra={"error": str(e), "traceback": traceback.format_exc(), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.get("/admin/uploads")
+def list_uploads_endpoint(
+    category_id: Optional[int] = None,
+    principal=Depends(require_roles({"admin"})),
+) -> List[Dict]:
+    """List ingestion uploads, optionally filtered by category."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        if category_id:
+            cur.execute("""
+                SELECT * FROM ingestion_uploads
+                WHERE category_id = %s
+                ORDER BY uploaded_at DESC
+            """, (category_id,))
+        else:
+            cur.execute("""
+                SELECT * FROM ingestion_uploads
+                ORDER BY uploaded_at DESC
+            """)
+        
+        uploads = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        
+        logger.info(
+            "Listed uploads",
+            extra={"admin_id": principal.user_id, "count": len(uploads), "status_code": 200},
+        )
+        return uploads
+    except Exception as e:
+        logger.error("Failed to list uploads", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
 
 
 def fetch_event_enrichments(conn, event_ids: List[int]) -> Dict[int, List[Dict[str, Any]]]:
@@ -463,7 +1092,8 @@ def get_events(
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
     viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
     limit: int = Query(100, ge=1, le=1000, description="Number of events to return"),
-    offset: int = Query(0, ge=0, description="Offset for pagination")
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """Get historical events with optional filters.
     
@@ -667,7 +1297,8 @@ def get_events_by_bins(
     zone: str = Query(..., description="Which zone to load: 'left', 'center', or 'right'"),
     category: Optional[List[str]] = Query(None, description="Filter by categories (can specify multiple)"),
     strategy: Optional[List[str]] = Query(None, description="Filter by strategies (can specify multiple)"),
-    limit: int = Query(100, ge=1, le=1000, description="Number of events to return per bin")
+    limit: int = Query(100, ge=1, le=1000, description="Number of events to return per bin"),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """
     Load events for a 5-bin zone in the 15-bin timeline system.
@@ -818,6 +1449,7 @@ def get_events_count(
     viewport_end: Optional[int] = Query(None, description="Viewport end year"),
     viewport_is_bc_start: Optional[bool] = Query(None, description="Whether viewport_start is BC"),
     viewport_is_bc_end: Optional[bool] = Query(None, description="Whether viewport_end is BC"),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """Get count of events matching filters. Used to populate 'Events in Scope' stat.
     
@@ -896,7 +1528,7 @@ def get_events_count(
 
 
 @app.get("/events/{event_id}", response_model=HistoricalEvent)
-def get_event(event_id: int):
+def get_event(event_id: int, _principal=Depends(require_scopes(["public"]))):
     """Get a specific historical event by ID."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -931,7 +1563,7 @@ def get_event(event_id: int):
 
 
 @app.get("/events/{event_id}/extraction-debug", response_model=ExtractionDebug)
-def get_event_extraction_debug(event_id: int):
+def get_event_extraction_debug(event_id: int, _principal=Depends(require_scopes(["public"]))):
     """Get the extraction observability record for a given event."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -978,7 +1610,7 @@ def get_event_extraction_debug(event_id: int):
 
 
 @app.get("/stats", response_model=TimelineStats)
-def get_stats():
+def get_stats(_principal=Depends(require_scopes(["public"]))):
     """Get timeline statistics."""
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1015,7 +1647,7 @@ def get_stats():
 
 
 @app.get("/categories")
-def get_categories():
+def get_categories(_principal=Depends(require_scopes(["public"]))):
     """Get list of all categories (both Wikipedia and LLM-enriched).
     
     Returns a combined list of categories from:
@@ -1173,7 +1805,8 @@ def get_events_count(
 @app.get("/search", response_model=List[HistoricalEvent])
 def search_events(
     q: str = Query(..., min_length=3, description="Search query"),
-    limit: int = Query(50, ge=1, le=100)
+    limit: int = Query(50, ge=1, le=100),
+    _principal=Depends(require_scopes(["public"]))
 ):
     """Search historical events by title and description."""
     conn = get_db_connection()

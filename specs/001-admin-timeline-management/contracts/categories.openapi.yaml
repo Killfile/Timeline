@@ -1,0 +1,665 @@
+openapi: 3.0.3
+info:
+  title: Timeline Admin - Category Management API
+  description: |
+    Timeline category management endpoints for admin timeline management.
+    Provides CRUD operations on timeline categories and JSON upload/ingestion.
+    All endpoints require admin role.
+  version: 1.0.0
+  contact:
+    name: Timeline Admin Support
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.timeline.example.com
+    description: Production server
+
+paths:
+  /admin/categories:
+    get:
+      summary: List all timeline categories
+      description: |
+        Retrieve a list of all timeline categories with event counts and metadata.
+        Requires admin role.
+      operationId: listCategories
+      tags:
+        - Categories
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          description: Maximum number of categories to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of categories to skip
+        - name: strategy
+          in: query
+          schema:
+            type: string
+          description: Filter categories by ingestion strategy name
+      responses:
+        '200':
+          description: List of categories retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+                  total:
+                    type: integer
+                    description: Total number of categories
+                    example: 15
+                  limit:
+                    type: integer
+                    example: 50
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Create new timeline category
+      description: |
+        Create a new timeline category manually (without JSON upload).
+        Requires admin role.
+      operationId: createCategory
+      tags:
+        - Categories
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryCreate'
+      responses:
+        '201':
+          description: Category created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidName:
+                  value:
+                    detail: Category name cannot contain special characters
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Category already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Category with this name already exists
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/categories/{category_id}:
+    get:
+      summary: Get category by ID
+      description: |
+        Retrieve detailed information about a specific timeline category.
+        Requires admin role.
+      operationId: getCategory
+      tags:
+        - Categories
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '200':
+          description: Category details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Category not found
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      summary: Update timeline category
+      description: |
+        Update category metadata (name, description).
+        Requires admin role.
+      operationId: updateCategory
+      tags:
+        - Categories
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryUpdate'
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Category name already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: Delete timeline category
+      description: |
+        Delete a timeline category and cascade-delete all associated events.
+        Requires admin role. This action is irreversible.
+      operationId: deleteCategory
+      tags:
+        - Categories
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '204':
+          description: Category deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/uploads:
+    get:
+      summary: List upload history
+      description: |
+        Retrieve a list of all JSON file uploads with status and metadata.
+        Requires admin role.
+      operationId: listUploads
+      tags:
+        - Uploads
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Maximum number of uploads to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of uploads to skip
+        - name: status_filter
+          in: query
+          schema:
+            type: string
+            enum: [completed, failed, processing]
+          description: Filter uploads by status
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+          description: Filter uploads by category ID
+      responses:
+        '200':
+          description: List of uploads retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Upload'
+                  total:
+                    type: integer
+                    description: Total number of uploads matching filters
+                    example: 25
+                  limit:
+                    type: integer
+                    example: 20
+                  offset:
+                    type: integer
+                    example: 0
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      summary: Upload timeline JSON file
+      description: |
+        Upload a JSON file compliant with import_schema.json to create/populate a timeline category.
+        The file is validated against the schema before processing.
+        Requires admin role.
+      operationId: uploadTimelineJson
+      tags:
+        - Uploads
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - category_name
+                - json_data
+              properties:
+                category_name:
+                  type: string
+                  description: Name for the timeline category
+                  example: Roman History Timeline
+                json_data:
+                  type: object
+                  description: JSON data compliant with import_schema.json
+                  properties:
+                    strategy:
+                      type: string
+                      description: Ingestion strategy name
+                    run_id:
+                      type: string
+                      description: Unique run identifier
+                    generated_at_utc:
+                      type: string
+                      format: date-time
+                      description: Generation timestamp in UTC
+                    events:
+                      type: array
+                      description: Array of historical events
+                      items:
+                        type: object
+                overwrite:
+                  type: boolean
+                  description: Explicitly overwrite an existing category
+                  default: false
+      responses:
+        '201':
+          description: Upload successful, category created/populated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id:
+                    type: integer
+                    example: 42
+                  category_id:
+                    type: integer
+                    example: 5
+                  category_name:
+                    type: string
+                    example: Roman History
+                  events_count:
+                    type: integer
+                    example: 1523
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Successfully uploaded 1523 events to category 'Roman History'
+        '400':
+          description: Invalid JSON or schema validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidJson:
+                  value:
+                    detail: "Invalid JSON: Expecting property name enclosed in double quotes at line 42"
+                schemaValidation:
+                  value:
+                    detail: "Validation failed at events[0].title: field required"
+                categoryExists:
+                  value:
+                    detail: Category 'Roman History' already exists
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: File too large (max 10 MB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "File too large. Maximum size: 10 MB"
+        '415':
+          description: Invalid content type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Invalid content type. Expected application/json
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /admin/uploads/{upload_id}:
+    get:
+      summary: Get upload details
+      description: |
+        Retrieve detailed information about a specific upload.
+        Requires admin role.
+      operationId: getUpload
+      tags:
+        - Uploads
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UploadId'
+      responses:
+        '200':
+          description: Upload details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Upload not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Upload not found
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: timeline_auth
+      description: JWT token stored in HttpOnly cookie
+
+  parameters:
+    CategoryId:
+      name: category_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Timeline category ID
+
+    UploadId:
+      name: upload_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Upload ID
+
+  schemas:
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - events_count
+        - created_at
+      properties:
+        id:
+          type: integer
+          example: 5
+        name:
+          type: string
+          example: Roman History
+        description:
+          type: string
+          nullable: true
+          example: Timeline of major events in Roman history from founding to fall
+        strategy_name:
+          type: string
+          nullable: true
+          example: timeline_of_roman_history
+        events_count:
+          type: integer
+          description: Number of events in this category
+          example: 1523
+        created_by:
+          type: integer
+          nullable: true
+          description: User ID of admin who created the category
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-01-20T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-02-10T14:22:00Z
+
+    CategoryDetail:
+      allOf:
+        - $ref: '#/components/schemas/Category'
+        - type: object
+          properties:
+            recent_uploads:
+              type: array
+              items:
+                $ref: '#/components/schemas/Upload'
+              description: Recent uploads for this category (max 5)
+
+    CategoryCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Category name (unique)
+          example: Food History
+        description:
+          type: string
+          description: Optional long-form description
+          example: Timeline of significant events in food history
+        strategy_name:
+          type: string
+          description: Optional ingestion strategy identifier
+          example: timeline_of_food
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          description: Updated category name
+          example: Ancient Roman History
+        description:
+          type: string
+          description: Updated description
+          example: Comprehensive timeline of Roman Republic and Empire
+
+    Upload:
+      type: object
+      required:
+        - id
+        - category_id
+        - filename
+        - file_size_bytes
+        - events_count
+        - status
+        - uploaded_at
+      properties:
+        id:
+          type: integer
+          example: 42
+        category_id:
+          type: integer
+          example: 5
+        category_name:
+          type: string
+          example: Roman History
+        uploaded_by:
+          type: integer
+          nullable: true
+          description: User ID of admin who uploaded the file
+          example: 1
+        filename:
+          type: string
+          example: timeline_of_roman_history.json
+        file_size_bytes:
+          type: integer
+          example: 2457600
+        events_count:
+          type: integer
+          description: Number of events extracted from upload
+          example: 1523
+        status:
+          type: string
+          enum: [success, failed, processing]
+          example: success
+        error_message:
+          type: string
+          nullable: true
+          description: Error message if status is 'failed'
+          example: null
+        uploaded_at:
+          type: string
+          format: date-time
+          example: 2026-02-10T14:22:00Z
+
+    UploadDetail:
+      allOf:
+        - $ref: '#/components/schemas/Upload'
+        - type: object
+          properties:
+            metadata:
+              type: object
+              description: Additional upload metadata from JSON (strategy, run_id, etc.)
+              example:
+                strategy: TimelineOfRomanHistory
+                run_id: 20260210T142200Z
+                parsing_end_utc: "2026-02-10T14:22:00Z"
+
+    Error:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Not authenticated
+
+    Forbidden:
+      description: Insufficient permissions (admin role required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Required roles: admin"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: Internal server error
+
+security:
+  - cookieAuth: []

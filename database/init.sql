@@ -1,3 +1,11 @@
+-- Strategies table to track ingestion strategies
+CREATE TABLE IF NOT EXISTS strategies (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create table for historical events from Wikipedia
 CREATE TABLE IF NOT EXISTS historical_events (
     id SERIAL PRIMARY KEY,
@@ -19,6 +27,7 @@ CREATE TABLE IF NOT EXISTS historical_events (
     precision NUMERIC(10, 2),
     category VARCHAR(100),
     wikipedia_url TEXT,
+    strategy_id INTEGER REFERENCES strategies(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -83,6 +92,17 @@ CREATE INDEX IF NOT EXISTS idx_historical_events_date_range ON historical_events
 -- Create full-text search index
 CREATE INDEX IF NOT EXISTS idx_historical_events_search ON historical_events USING gin(to_tsvector('english', title || ' ' || COALESCE(description, '')));
 
+-- Create index for efficient querying by strategy
+CREATE INDEX IF NOT EXISTS idx_historical_events_strategy_id ON historical_events(strategy_id);
+
+-- Insert known strategies
+INSERT INTO strategies (name, description) VALUES
+    ('list_of_years', 'Extracts events from Wikipedia List of years pages'),
+    ('bespoke_events', 'Manually curated events from JSON file'),
+    ('list_of_time_periods', 'Extracts events from Wikipedia List of time periods')
+ON CONFLICT (name) DO UPDATE SET
+    description = EXCLUDED.description;
+
 -- Event enrichments table (second-order data that survives reimports)
 -- Stores enrichment data tied to event_key rather than event id
 CREATE TABLE IF NOT EXISTS event_enrichments (
@@ -97,10 +117,10 @@ CREATE TABLE IF NOT EXISTS event_enrichments (
 CREATE TABLE IF NOT EXISTS event_categories (
     event_key TEXT REFERENCES historical_events(event_key) ON DELETE CASCADE,
     category TEXT NOT NULL,
-    llm_source TEXT,  -- NULL for Wikipedia, 'gpt-4o-mini' etc for LLM
+    llm_source TEXT NOT NULL DEFAULT '',  -- '' for Wikipedia, 'gpt-4o-mini' etc for LLM
     confidence FLOAT,  -- NULL for Wikipedia, 0.0-1.0 for LLM
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (event_key, category, COALESCE(llm_source, ''))
+    PRIMARY KEY (event_key, category, llm_source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_event_categories_category ON event_categories(category);

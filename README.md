@@ -38,17 +38,19 @@ This application consists of four containerized services:
    cp .env.example .env
    ```
 
-3. Start all services:
+3. Start all services (API runs in Docker):
    ```bash
-   docker compose up -d
+   docker-compose up -d
    ```
 
 4. Wait for data ingestion (takes a few minutes to fetch Wikipedia data)
 
 5. Access the application:
-   - **Frontend**: http://localhost:3000
-   - **API**: http://localhost:8000
+   - **Frontend**: http://localhost:3000 (Docker)
+   - **API**: http://localhost:8000 (Docker)
    - **API Documentation**: http://localhost:8000/docs
+
+⚠️ **Note**: The API always runs in Docker via `docker-compose`. Do not run the API directly with `uvicorn` outside of Docker.
 
 ## API Authentication
 

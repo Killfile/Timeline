@@ -1,0 +1,32 @@
+# Temporary database for local integration testing
+# Usage: docker-compose -f docker-compose.test.yml up -d
+# Run tests: POSTGRES_HOST=localhost pytest tests/integration/
+# Cleanup: docker-compose -f docker-compose.test.yml down -v
+
+services:
+  test-database:
+    image: postgres:15-alpine
+    container_name: timeline-test-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-timeline_history}
+      POSTGRES_USER: ${POSTGRES_USER:-timeline_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-timeline_pass}
+    ports:
+      - "5433:5432"  # Use different port (5433) to avoid conflicts
+    volumes:
+      - timeline-test-db-data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timeline_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - timeline-test
+
+volumes:
+  timeline-test-db-data:
+
+networks:
+  timeline-test:
+    driver: bridge

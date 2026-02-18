@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AuthContext:
     claims: dict
+    user_id: str | None
+    roles: set[str]
+    scopes: set[str]
 
 
 def build_auth_dependency(
@@ -114,6 +117,14 @@ def build_auth_dependency(
             }
         )
 
-        return AuthContext(claims=claims)
+        roles = set(claims.get("roles", []) or [])
+        scopes = set(claims.get("scopes", []) or [])
+
+        return AuthContext(
+            claims=claims,
+            user_id=claims.get("sub"),
+            roles=roles,
+            scopes=scopes,
+        )
 
     return _dependency

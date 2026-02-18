@@ -36,7 +36,7 @@ def test_token_expires_after_ttl():
     config = _build_test_config(ttl_seconds=1)
     
     # Generate a token
-    token_payload = generate_token(config)
+    token_payload = generate_token(config, user_id="user-1", roles=["user"], scopes=[])
     
     # Token should be valid immediately
     claims = decode_token(token_payload.token, config)
@@ -59,7 +59,7 @@ def test_token_reusable_within_ttl():
     config = _build_test_config(ttl_seconds=10)
     
     # Generate a token
-    token_payload = generate_token(config)
+    token_payload = generate_token(config, user_id="user-1", roles=["user"], scopes=[])
     
     # Use token multiple times - should succeed
     for i in range(5):
@@ -137,7 +137,7 @@ def test_expired_token_includes_exp_in_error():
     config = _build_test_config(ttl_seconds=1)
     
     # Generate and let token expire
-    token_payload = generate_token(config)
+    token_payload = generate_token(config, user_id="user-1", roles=["user"], scopes=[])
     time.sleep(2)
     
     # Verify the error is specifically about expiration

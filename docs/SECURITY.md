@@ -1,13 +1,44 @@
 # Security Documentation
 
-**Last Updated**: February 3, 2026  
-**Feature**: Cookie-Based JWT Authentication
+**Last Updated**: February 16, 2026  
+**Feature**: Two-Tier JWT Authentication (Anonymous + Admin)
 
 ## Overview
 
-The Timeline API implements cookie-based JWT authentication to protect against unauthorized access and abuse. This document explains the security model, threat protections, and best practices.
+The Timeline API implements a two-tier JWT authentication system using `HttpOnly` cookies. This provides anti-scraper protection while maintaining public accessibility and secure admin operations.
 
 ## Authentication Architecture
+
+### Two-Tier Authentication Model
+
+The API uses **two types of authentication tokens**:
+
+1. **Anonymous Tokens** (`/token` endpoint)
+   - No credentials required
+   - Grants `"public"` scope for read-only access
+   - Rate-limited per IP to prevent abuse
+   - Discourages automated scrapers (requires cookie/JS support)
+
+2. **Admin Tokens** (`/admin/login` endpoint)
+   - Requires email/password credentials
+   - Grants user-specific roles (e.g., `"admin"`)
+   - Grants scopes: `["public", "admin"]` for full access
+   - Enables privileged operations (user management, uploads, etc.)
+
+### Token Scopes & Access Control
+
+| Scope | Granted By | Access Level |
+|-------|-----------|--------------|
+| `public` | Anonymous tokens, Admin tokens | Read-only access to timeline data (`/events`, `/categories`, `/search`, `/stats`) |
+| `admin` | Admin tokens only | Write access to admin endpoints (`/admin/*`) |
+
+**Authorization Flow**:
+```
+1. Anonymous user → POST /token → JWT with ["public"] scope → Access /events ✓
+2. Admin user → POST /admin/login → JWT with ["public", "admin"] scopes → Access /admin/* ✓
+3. No token → GET /events → 401 Unauthorized ✗
+4. Anonymous token → GET /admin/users → 403 Forbidden ✗ (lacks "admin" scope)
+```
 
 ### Cookie-Based Session Authentication
 
@@ -15,10 +46,11 @@ The Timeline API implements cookie-based JWT authentication to protect against u
 
 The API uses `HttpOnly` cookies with JWT tokens instead of Authorization headers for several security reasons:
 
-1. **Browser-Enforced Security**: Cookies cannot be set by non-browser clients, preventing trivial spoofing
-2. **XSS Protection**: `HttpOnly` flag prevents JavaScript access to tokens
-3. **CSRF Protection**: `SameSite=Strict` flag prevents cross-site request forgery
-4. **Automatic Handling**: Browser manages cookie lifecycle, reducing attack surface
+1. **Browser-Managed Storage**: Browsers handle cookie storage and transmission automatically, preventing developers from accidentally exposing tokens in client-side code
+2. **XSS Protection**: `HttpOnly` flag prevents JavaScript access to tokens, mitigating cross-site scripting attacks
+3. **CSRF Protection**: `SameSite=Strict` flag prevents cross-site request forgery by blocking cross-origin requests
+4. **Automatic Handling**: Browser manages cookie lifecycle and secure transmission (with `Secure` flag), reducing attack surface
+5. **Defense in Depth**: While any HTTP client can set Cookie headers, the combination of HttpOnly, SameSite, Secure flags, and proper validation creates multiple layers of protection that raise the bar for attackers
 
 ### Security Properties
 
@@ -91,6 +123,28 @@ The API uses `HttpOnly` cookies with JWT tokens instead of Authorization headers
 API_RATE_LIMIT_PER_MINUTE=60  # Requests per minute
 API_RATE_LIMIT_BURST=10       # Additional burst capacity
 ```
+
+### ✅ Automated Scrapers & Bots
+
+**Threat**: Scrapers systematically harvest timeline data  
+**Mitigations**:
+1. **Cookie Requirement**: All data endpoints require JWT in cookie (not Authorization header)
+2. **JavaScript + State**: Anonymous tokens require POST /token → cookie → subsequent requests
+3. **Rate Limiting**: Token issuance limited per IP
+4. **Browser Fingerprinting**: User-Agent parsing helps identify bot patterns
+
+**Why this discourages scrapers**:
+- Simple HTTP scrapers (`curl`, `wget`, basic scripts) don't handle cookies automatically
+- Requires session management + state tracking (more complex)
+- Most scrapers target APIs that don't require authentication
+- Rate limiting prevents mass token generation
+
+**Legitimate Access**:
+- Web browsers: Automatic cookie management, seamless UX
+- Headless browsers: Supported (Playwright, Selenium work fine)
+- API clients: Can implement cookie handling, but must respect rate limits
+
+**Philosophy**: Data is inherently public (from Wikipedia), but we make systematic scraping more effort than the data is worth.
 
 ### ✅ Man-in-the-Middle (MitM)
 

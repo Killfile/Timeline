@@ -1,0 +1,242 @@
+openapi: 3.0.3
+info:
+  title: Timeline Admin - Authentication API
+  description: |
+    Authentication endpoints for admin timeline management.
+    Provides login functionality with JWT cookie-based authentication.
+  version: 1.0.0
+  contact:
+    name: Timeline Admin Support
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.timeline.example.com
+    description: Production server
+
+paths:
+  /admin/login:
+    post:
+      summary: Admin login
+      description: |
+        Authenticate admin user with email and password.
+        Returns JWT token in HttpOnly cookie on success.
+      operationId: adminLogin
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User email address
+                  example: admin@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: User password (min 8 characters)
+                  example: securePassword123
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              description: JWT authentication cookie (HttpOnly, Secure, SameSite)
+              schema:
+                type: string
+                example: timeline_auth=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; Path=/; HttpOnly; Secure; SameSite=Strict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Login successful
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      email:
+                        type: string
+                        example: admin@example.com
+                      roles:
+                        type: array
+                        items:
+                          type: string
+                        example: ["admin"]
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidEmail:
+                  value:
+                    detail: Invalid email or password
+                inactiveUser:
+                  value:
+                    detail: Account is inactive
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: Too many login attempts. Please try again later.
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/logout:
+    post:
+      summary: Admin logout
+      description: |
+        Invalidate current JWT token by clearing the authentication cookie.
+      operationId: adminLogout
+      tags:
+        - Authentication
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          headers:
+            Set-Cookie:
+              description: Clears authentication cookie
+              schema:
+                type: string
+                example: timeline_auth=; Path=/; Max-Age=0
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logout successful
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/me:
+    get:
+      summary: Get current user
+      description: |
+        Retrieve information about the currently authenticated user.
+        Useful for verifying authentication status and displaying user info in UI.
+      operationId: getCurrentUser
+      tags:
+        - Authentication
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: User information retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  email:
+                    type: string
+                    example: admin@example.com
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                    example: ["admin"]
+                  is_active:
+                    type: boolean
+                    example: true
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: 2026-01-15T10:30:00Z
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: timeline_auth
+      description: JWT token stored in HttpOnly cookie
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable error message
+          example: Invalid credentials
+
+    ValidationError:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            properties:
+              loc:
+                type: array
+                items:
+                  type: string
+                description: Location of validation error (field path)
+                example: ["body", "email"]
+              msg:
+                type: string
+                description: Validation error message
+                example: field required
+              type:
+                type: string
+                description: Error type
+                example: value_error.missing
+
+security:
+  - cookieAuth: []
