@@ -116,3 +116,34 @@ CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_category_id ON ingestion_upload
 CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_uploaded_by ON ingestion_uploads(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_status ON ingestion_uploads(status);
 CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_uploaded_at ON ingestion_uploads(uploaded_at DESC);
+
+-- Create default admin user
+-- Default credentials: admin@example.com / admin123
+-- **IMPORTANT**: Change this password immediately after first login!
+DO $$
+DECLARE
+    admin_user_id INTEGER;
+    admin_role_id INTEGER;
+BEGIN
+    -- Check if default admin already exists
+    IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@example.com') THEN
+        -- Insert default admin user
+        INSERT INTO users (email, password_hash, is_active)
+        VALUES (
+            'admin@example.com',
+            '$argon2id$v=19$m=65536,t=3,p=4$hz3IC5+nY87BwiLc5v0DRg$xWVwpdUGWwluYFN3JsdmSeeALTniub6vhIcFb3gyeVM',
+            TRUE
+        )
+        RETURNING id INTO admin_user_id;
+
+        -- Get admin role ID
+        SELECT id INTO admin_role_id FROM roles WHERE name = 'admin';
+
+        -- Assign admin role to default user
+        INSERT INTO user_roles (user_id, role_id)
+        VALUES (admin_user_id, admin_role_id);
+
+        RAISE NOTICE 'Default admin user created: admin@example.com / admin123';
+        RAISE NOTICE 'SECURITY WARNING: Change the default password immediately!';
+    END IF;
+END $$;
