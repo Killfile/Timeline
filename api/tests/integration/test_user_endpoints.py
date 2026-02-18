@@ -12,10 +12,29 @@ class TestListUsers:
         response = test_client.get("/admin/users")
         assert response.status_code == 401
 
-    def test_list_users_requires_admin_role(self, test_client):
+    def test_list_users_requires_admin_role(self, test_client, admin_client, db_cleanup):
         """Test that listing users requires admin role."""
-        # TODO: Create non-admin user and test 403
-        pass
+        # Create a non-admin user
+        response = admin_client.post(
+            "/admin/users",
+            json={
+                "email": "nonadmin@example.com",
+                "password": "password123",
+                "roles": ["user"],
+            },
+        )
+        assert response.status_code == 201
+        
+        # Login as non-admin user
+        login_response = test_client.post(
+            "/admin/login",
+            json={"email": "nonadmin@example.com", "password": "password123"},
+        )
+        assert login_response.status_code == 200
+        
+        # Try to list users (should get 403)
+        response = test_client.get("/admin/users")
+        assert response.status_code == 403
 
     def test_list_users_success(self, admin_client):
         """Test successful user listing."""

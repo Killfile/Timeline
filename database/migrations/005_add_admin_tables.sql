@@ -22,10 +22,18 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active) WHERE is_active = TRUE;
 
-CREATE TRIGGER update_users_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Create trigger for users updated_at (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at'
+    ) THEN
+        CREATE TRIGGER update_users_updated_at
+            BEFORE UPDATE ON users
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Roles table
 CREATE TABLE IF NOT EXISTS roles (
@@ -71,10 +79,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_categories_name ON timeline_categ
 CREATE INDEX IF NOT EXISTS idx_timeline_categories_strategy ON timeline_categories(strategy_name);
 CREATE INDEX IF NOT EXISTS idx_timeline_categories_metadata ON timeline_categories USING gin(metadata);
 
-CREATE TRIGGER update_timeline_categories_updated_at
-    BEFORE UPDATE ON timeline_categories
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Create trigger for timeline_categories updated_at (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_timeline_categories_updated_at'
+    ) THEN
+        CREATE TRIGGER update_timeline_categories_updated_at
+            BEFORE UPDATE ON timeline_categories
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Add category_id to historical_events (new foreign key)
 ALTER TABLE historical_events
@@ -100,34 +116,3 @@ CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_category_id ON ingestion_upload
 CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_uploaded_by ON ingestion_uploads(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_status ON ingestion_uploads(status);
 CREATE INDEX IF NOT EXISTS idx_ingestion_uploads_uploaded_at ON ingestion_uploads(uploaded_at DESC);
-
--- Create default admin user
--- Default credentials: admin@example.com / admin123
--- **IMPORTANT**: Change this password immediately after first login!
-DO $$
-DECLARE
-    admin_user_id INTEGER;
-    admin_role_id INTEGER;
-BEGIN
-    -- Check if default admin already exists
-    IF NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@example.com') THEN
-        -- Insert default admin user
-        INSERT INTO users (email, password_hash, is_active)
-        VALUES (
-            'admin@example.com',
-            '$argon2id$v=19$m=65536,t=3,p=4$hz3IC5+nY87BwiLc5v0DRg$xWVwpdUGWwluYFN3JsdmSeeALTniub6vhIcFb3gyeVM',
-            TRUE
-        )
-        RETURNING id INTO admin_user_id;
-
-        -- Get admin role ID
-        SELECT id INTO admin_role_id FROM roles WHERE name = 'admin';
-
-        -- Assign admin role to default user
-        INSERT INTO user_roles (user_id, role_id)
-        VALUES (admin_user_id, admin_role_id);
-
-        RAISE NOTICE 'Default admin user created: admin@example.com / admin123';
-        RAISE NOTICE 'SECURITY WARNING: Change the default password immediately!';
-    END IF;
-END $$;

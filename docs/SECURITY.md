@@ -46,11 +46,11 @@ The API uses **two types of authentication tokens**:
 
 The API uses `HttpOnly` cookies with JWT tokens instead of Authorization headers for several security reasons:
 
-1. **Browser-Enforced Security**: Cookies cannot be set by non-browser clients, preventing trivial spoofing
-2. **Anti-Scraper Protection**: Requires JavaScript + cookie support, discouraging simple HTTP scrapers
-3. **XSS Protection**: `HttpOnly` flag prevents JavaScript access to tokens
-4. **CSRF Protection**: `SameSite=Strict` flag prevents cross-site request forgery
-5. **Automatic Handling**: Browser manages cookie lifecycle, reducing attack surface
+1. **Browser-Managed Storage**: Browsers handle cookie storage and transmission automatically, preventing developers from accidentally exposing tokens in client-side code
+2. **XSS Protection**: `HttpOnly` flag prevents JavaScript access to tokens, mitigating cross-site scripting attacks
+3. **CSRF Protection**: `SameSite=Strict` flag prevents cross-site request forgery by blocking cross-origin requests
+4. **Automatic Handling**: Browser manages cookie lifecycle and secure transmission (with `Secure` flag), reducing attack surface
+5. **Defense in Depth**: While any HTTP client can set Cookie headers, the combination of HttpOnly, SameSite, Secure flags, and proper validation creates multiple layers of protection that raise the bar for attackers
 
 ### Security Properties
 

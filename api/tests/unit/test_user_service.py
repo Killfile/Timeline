@@ -306,7 +306,6 @@ class TestChangeUserPassword:
     """Tests for change_user_password function."""
 
     @patch('api.services.user_service.fetch_user_by_id')
-    @patch('api.services.user_service.fetch_user_by_id')
     def test_change_password_success(self, mock_fetch_by_id, mock_conn):
         """Test successful password change."""
         cursor = mock_conn.cursor.return_value
@@ -325,9 +324,6 @@ class TestChangeUserPassword:
     def test_change_password_user_not_found(self, mock_fetch_by_id, mock_conn):
         """Test password change for non-existent user."""
         mock_fetch_by_id.return_value = None
-
-        with pytest.raises(ValueError, match="not found"):
-            change_user_password(mock_conn, user_id=999, new_password="newPassword123")
 
         with pytest.raises(ValueError, match="not found"):
             change_user_password(mock_conn, user_id=999, new_password="newPassword123")
