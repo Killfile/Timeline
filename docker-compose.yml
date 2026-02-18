@@ -135,6 +135,7 @@ services:
       - timeline-network
     volumes:
       - ./api:/app/api
+      - ./timeline_common:/app/timeline_common
       - ./wikipedia-ingestion/import_schema.json:/app/wikipedia-ingestion/import_schema.json
 
   # Frontend Application with D3.js

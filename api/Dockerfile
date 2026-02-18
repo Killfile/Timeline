@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir --trusted-host pypi.org --trusted-host pypi.pytho
 # Copy API code (will be at /app/api/)
 COPY api/ ./api/
 
+# Copy shared utilities
+COPY timeline_common/ ./timeline_common/
+
 # Copy shared schema (needed for validation)
 COPY wikipedia-ingestion/import_schema.json ./wikipedia-ingestion/
 
