@@ -7,6 +7,11 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
+import sys
+
+# Add timeline_common to path for shared utilities
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+from timeline_common.event_key import compute_event_key
 
 
 def _load_import_schema() -> Dict:
@@ -394,10 +399,13 @@ def process_upload(
             # Insert events
             events = upload_data.get("events", [])
             for event in events:
-                # Generate event_key from title, years, and description (deterministic)
-                import hashlib
-                event_key_input = f"{event.get('title')}|{event.get('start_year')}|{event.get('end_year')}|{event.get('description')}"
-                event_key = hashlib.sha256(event_key_input.encode()).hexdigest()
+                # Use shared event_key helper for consistent key generation
+                event_key = compute_event_key(
+                    title=event.get('title'),
+                    start_year=event.get('start_year'),
+                    end_year=event.get('end_year'),
+                    description=event.get('description')
+                )
                 
                 # Prefer uploaded weight; fall back to computed weight if missing
                 if "weight" in event and event.get("weight") is not None:

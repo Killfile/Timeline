@@ -22,10 +22,18 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active) WHERE is_active = TRUE;
 
-CREATE TRIGGER update_users_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Create trigger for users updated_at (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at'
+    ) THEN
+        CREATE TRIGGER update_users_updated_at
+            BEFORE UPDATE ON users
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Roles table
 CREATE TABLE IF NOT EXISTS roles (
@@ -71,10 +79,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_categories_name ON timeline_categ
 CREATE INDEX IF NOT EXISTS idx_timeline_categories_strategy ON timeline_categories(strategy_name);
 CREATE INDEX IF NOT EXISTS idx_timeline_categories_metadata ON timeline_categories USING gin(metadata);
 
-CREATE TRIGGER update_timeline_categories_updated_at
-    BEFORE UPDATE ON timeline_categories
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Create trigger for timeline_categories updated_at (idempotent)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_timeline_categories_updated_at'
+    ) THEN
+        CREATE TRIGGER update_timeline_categories_updated_at
+            BEFORE UPDATE ON timeline_categories
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- Add category_id to historical_events (new foreign key)
 ALTER TABLE historical_events
