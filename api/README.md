@@ -10,7 +10,7 @@ FastAPI-based REST API providing access to historical timeline data with JWT aut
 
 ```bash
 # Start all services (API will start in Docker container)
-cd /Users/chris/Timeline
+cd <repo_root>
 docker-compose up -d
 
 # API will be available at http://localhost:8000
