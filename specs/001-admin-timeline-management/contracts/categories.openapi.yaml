@@ -388,7 +388,7 @@ paths:
               examples:
                 invalidJson:
                   value:
-                    detail: Invalid JSON: Expecting property name enclosed in double quotes at line 42
+                    detail: "Invalid JSON: Expecting property name enclosed in double quotes at line 42"
                 schemaValidation:
                   value:
                     detail: "Validation failed at events[0].title: field required"
@@ -406,7 +406,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                detail: File too large. Maximum size: 10 MB
+                detail: "File too large. Maximum size: 10 MB"
         '415':
           description: Invalid content type
           content:
@@ -650,7 +650,7 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            detail: Required roles: admin
+            detail: "Required roles: admin"
 
     InternalError:
       description: Internal server error
