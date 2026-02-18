@@ -4,14 +4,23 @@ FastAPI-based REST API providing access to historical timeline data with JWT aut
 
 ## Quick Start
 
-### Local Development
+### Running the API (Docker Container)
+
+⚠️ **Important**: The API always runs in a Docker container. Do not attempt to run it standalone with `uvicorn`.
 
 ```bash
-# Start all services
+# Start all services (API will start in Docker container)
+cd /Users/chris/Timeline
 docker-compose up -d
 
 # API will be available at http://localhost:8000
 ```
+
+The API container automatically:
+- Connects to the PostgreSQL database (also in Docker)
+- Mounts the schema file for JSON validation
+- Sets up all environment variables
+- Enables hot reload for development
 
 ### API Documentation
 

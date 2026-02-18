@@ -8,14 +8,14 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel, EmailStr
 
-from auth.auth_dependency import build_auth_dependency
-from auth.client_detection import parse_user_agent, get_client_summary
-from auth.config import AuthConfig, load_auth_config
-from auth.jwt_service import generate_token
-from auth.password_service import verify_password
-from auth.rate_limiter import RateLimiter
-from auth.rbac import require_roles, require_scopes
-from models.user import fetch_user_by_email, fetch_user_by_id, fetch_user_roles
+from .auth.auth_dependency import build_auth_dependency
+from .auth.client_detection import parse_user_agent, get_client_summary
+from .auth.config import AuthConfig, load_auth_config
+from .auth.jwt_service import generate_token
+from .auth.password_service import verify_password
+from .auth.rate_limiter import RateLimiter
+from .auth.rbac import require_roles, require_scopes
+from .models.user import fetch_user_by_email, fetch_user_by_id, fetch_user_roles
 
 # Configure logging
 logging.basicConfig(
@@ -536,7 +536,7 @@ def list_users_endpoint(
     principal=Depends(require_roles({"admin"})),
 ) -> Dict[str, Any]:
     """List all users with pagination and filtering."""
-    from services.user_service import list_users
+    from .services.user_service import list_users
     
     conn = get_db_connection()
     try:
@@ -569,7 +569,7 @@ def create_user_endpoint(
     principal=Depends(require_roles({"admin"})),
 ) -> Dict[str, Any]:
     """Create a new user."""
-    from services.user_service import create_user
+    from .services.user_service import create_user
     
     conn = get_db_connection()
     try:
@@ -597,7 +597,7 @@ def get_user_endpoint(
     principal=Depends(require_roles({"admin"})),
 ) -> Dict[str, Any]:
     """Get a user by ID."""
-    from services.user_service import get_user
+    from .services.user_service import get_user
     
     conn = get_db_connection()
     try:
@@ -627,7 +627,7 @@ def update_user_endpoint(
     principal=Depends(require_roles({"admin"})),
 ) -> Dict[str, Any]:
     """Update a user's information."""
-    from services.user_service import update_user
+    from .services.user_service import update_user
     
     # Prevent admin from deactivating themselves
     if is_active is False and principal.user_id == str(user_id):
@@ -661,7 +661,7 @@ def delete_user_endpoint(
     principal=Depends(require_roles({"admin"})),
 ):
     """Delete (deactivate) a user."""
-    from services.user_service import delete_user
+    from .services.user_service import delete_user
     
     # Prevent admin from deleting themselves
     if principal.user_id == str(user_id):
@@ -691,7 +691,7 @@ def change_password_endpoint(
     principal=Depends(require_roles({"admin"})),
 ) -> Dict[str, str]:
     """Change a user's password."""
-    from services.user_service import change_user_password
+    from .services.user_service import change_user_password
     
     conn = get_db_connection()
     try:
@@ -706,8 +706,256 @@ def change_password_endpoint(
         if "not found" in str(e):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    finally:
+        conn.close()
+
+
+# ===== Category Management Endpoints =====
+
+
+@app.get("/admin/categories")
+def list_categories_endpoint(
+    strategy: Optional[str] = None,
+    principal=Depends(require_roles({"admin"})),
+) -> List[Dict]:
+    """List all timeline categories, optionally filtered by strategy."""
+    from .services.category_service import list_categories
+    
+    conn = get_db_connection()
+    try:
+        categories = list_categories(conn)
+        
+        # Filter by strategy if provided
+        if strategy:
+            categories = [c for c in categories if c.get("strategy_name") == strategy]
+        
+        logger.info(
+            "Listed categories",
+            extra={"admin_id": principal.user_id, "count": len(categories), "status_code": 200},
+        )
+        return categories
     except Exception as e:
-        logger.error("Failed to change password", extra={"error": str(e), "admin_id": principal.user_id, "user_id": user_id})
+        logger.error("Failed to list categories", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/categories", status_code=status.HTTP_201_CREATED)
+def create_category_endpoint(
+    name: str = Body(..., embed=True),
+    description: Optional[str] = Body(None, embed=True),
+    strategy_name: Optional[str] = Body(None, embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Create a new timeline category."""
+    from .services.category_service import create_category
+    
+    conn = get_db_connection()
+    try:
+        category = create_category(
+            conn,
+            name=name,
+            description=description,
+            strategy_name=strategy_name,
+            created_by=principal.user_id
+        )
+        logger.info(
+            "Created category",
+            extra={"admin_id": principal.user_id, "category_id": category["id"], "status_code": 201},
+        )
+        return category
+    except ValueError as e:
+        logger.warning("Failed to create category", extra={"error": str(e), "admin_id": principal.user_id})
+        if "already exists" in str(e):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to create category", extra={"error": str(e), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.get("/admin/categories/{category_id}")
+def get_category_endpoint(
+    category_id: int,
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Get a specific category by ID."""
+    from .services.category_service import get_category
+    
+    conn = get_db_connection()
+    try:
+        category = get_category(conn, category_id)
+        if not category:
+            logger.warning("Category not found", extra={"admin_id": principal.user_id, "category_id": category_id})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        
+        logger.info(
+            "Retrieved category",
+            extra={"admin_id": principal.user_id, "category_id": category_id, "status_code": 200},
+        )
+        return category
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.patch("/admin/categories/{category_id}")
+def update_category_endpoint(
+    category_id: int,
+    name: Optional[str] = Body(None, embed=True),
+    description: Optional[str] = Body(None, embed=True),
+    strategy_name: Optional[str] = Body(None, embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Update a category."""
+    from .services.category_service import update_category
+    
+    conn = get_db_connection()
+    try:
+        category = update_category(
+            conn,
+            category_id=category_id,
+            name=name,
+            description=description,
+            strategy_name=strategy_name
+        )
+        if not category:
+            logger.warning("Category not found", extra={"admin_id": principal.user_id, "category_id": category_id})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        
+        logger.info(
+            "Updated category",
+            extra={"admin_id": principal.user_id, "category_id": category_id, "status_code": 200},
+        )
+        return category
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.warning("Failed to update category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to update category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category_endpoint(
+    category_id: int,
+    principal=Depends(require_roles({"admin"})),
+):
+    """Delete a category."""
+    from .services.category_service import delete_category
+    
+    conn = get_db_connection()
+    try:
+        deleted = delete_category(conn, category_id)
+        if not deleted:
+            logger.warning("Category not found", extra={"admin_id": principal.user_id, "category_id": category_id})
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        
+        logger.info(
+            "Deleted category",
+            extra={"admin_id": principal.user_id, "category_id": category_id, "status_code": 204},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete category", extra={"error": str(e), "admin_id": principal.user_id, "category_id": category_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.post("/admin/uploads", status_code=status.HTTP_201_CREATED)
+def upload_json_endpoint(
+    category_name: str = Body(..., embed=True),
+    json_data: Dict = Body(..., embed=True),
+    overwrite: bool = Body(False, embed=True),
+    principal=Depends(require_roles({"admin"})),
+) -> Dict:
+    """Upload JSON data to create or update a timeline category."""
+    from .services.category_service import validate_import_schema, process_upload
+    
+    # Validate schema first
+    is_valid, errors = validate_import_schema(json_data)
+    if not is_valid:
+        logger.warning("Invalid upload schema", extra={"admin_id": principal.user_id, "errors": errors})
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid schema: {errors}")
+    
+    conn = get_db_connection()
+    try:
+        result = process_upload(
+            conn,
+            upload_data=json_data,
+            category_name=category_name,
+            uploaded_by=principal.user_id,
+            overwrite=overwrite
+        )
+        
+        logger.info(
+            "Uploaded category JSON",
+            extra={
+                "admin_id": principal.user_id,
+                "category_id": result["category_id"],
+                "events_inserted": result["events_inserted"],
+                "status_code": 201
+            },
+        )
+        return result
+    except ValueError as e:
+        logger.warning("Failed to upload", extra={"error": str(e), "admin_id": principal.user_id})
+        if "already exists" in str(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        import traceback
+        logger.error("Failed to upload category", extra={"error": str(e), "traceback": traceback.format_exc(), "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+    finally:
+        conn.close()
+
+
+@app.get("/admin/uploads")
+def list_uploads_endpoint(
+    category_id: Optional[int] = None,
+    principal=Depends(require_roles({"admin"})),
+) -> List[Dict]:
+    """List ingestion uploads, optionally filtered by category."""
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        if category_id:
+            cur.execute("""
+                SELECT * FROM ingestion_uploads
+                WHERE category_id = %s
+                ORDER BY uploaded_at DESC
+            """, (category_id,))
+        else:
+            cur.execute("""
+                SELECT * FROM ingestion_uploads
+                ORDER BY uploaded_at DESC
+            """)
+        
+        uploads = [dict(row) for row in cur.fetchall()]
+        cur.close()
+        
+        logger.info(
+            "Listed uploads",
+            extra={"admin_id": principal.user_id, "count": len(uploads), "status_code": 200},
+        )
+        return uploads
+    except Exception as e:
+        logger.error("Failed to list uploads", extra={"error": str(e), "admin_id": principal.user_id})
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
     finally:
         conn.close()

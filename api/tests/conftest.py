@@ -44,19 +44,17 @@ def test_client():
     """Provide a FastAPI TestClient for integration tests."""
     from fastapi.testclient import TestClient
     
-    # Load api.py as a module
-    api_file = API_DIR / "api.py"
-    spec = importlib.util.spec_from_file_location("api_module", api_file)
-    api_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(api_module)
+    # Import api.api directly using the package structure
+    import sys
+    sys.path.insert(0, str(API_DIR.parent))
+    from api.api import app
     
-    return TestClient(api_module.app)
+    return TestClient(app)
 
 
 @pytest.fixture(scope="function")
 def db_cleanup():
-    """Clean up test data after each test to ensure idempotency."""
-    # Store the initial state (just admin user)
+    """Clean up test data before and after each test to ensure idempotency."""
     conn = psycopg2.connect(
         host=os.environ["DB_HOST"],
         port=os.environ["DB_PORT"],
@@ -66,23 +64,30 @@ def db_cleanup():
     )
     
     try:
+        # Get admin user ID to preserve it
         with conn.cursor(cursor_factory=DictCursor) as cur:
-            # Get admin user ID to preserve it
             cur.execute("SELECT id FROM users WHERE email = 'admin@example.com'")
             admin_row = cur.fetchone()
             admin_id = admin_row[0] if admin_row else None
+        conn.commit()
         
+        # CLEANUP BEFORE TEST: Delete all categories to ensure clean test slate
+        with conn.cursor() as cur:
+            # DELETE CASCADE is already set up on the timeline_categories table
+            # so this will cascade delete all related events
+            cur.execute("DELETE FROM timeline_categories")
         conn.commit()
         
         yield  # Run the test
         
-        # Cleanup after test: delete all users except admin
+        # CLEANUP AFTER TEST: Delete all categories and other users (except admin)
         with conn.cursor() as cur:
+            # Delete all categories (cascade delete to events)
+            cur.execute("DELETE FROM timeline_categories")
+            
+            # Delete all users except admin
             if admin_id:
                 cur.execute("DELETE FROM users WHERE id != %s", (admin_id,))
-            else:
-                # If no admin, delete all test users (shouldn't happen)
-                cur.execute("DELETE FROM users WHERE email != 'admin@example.com'")
         
         conn.commit()
     finally:
@@ -98,5 +103,8 @@ def admin_client(test_client, db_cleanup):
         json={"email": "admin@example.com", "password": "admin123"},
     )
     assert response.status_code == 200, f"Login failed: {response.json()}"
+    
+    # The TestClient automatically stores and sends cookies from the response
+    # So the test_client should now have the auth cookie set
     return test_client
 

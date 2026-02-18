@@ -3,8 +3,6 @@
 # Run tests: POSTGRES_HOST=localhost pytest tests/integration/
 # Cleanup: docker-compose -f docker-compose.test.yml down -v
 
-version: '3.8'
-
 services:
   test-database:
     image: postgres:15-alpine

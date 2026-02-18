@@ -51,6 +51,7 @@ function showAdmin(user) {
     adminUser.textContent = `${user.email} (roles: ${user.roles.join(", ")})`;
     setStatus("You are signed in.", "success");
     loadUsers();
+    loadCategories();
 }
 
 async function checkSession() {
@@ -61,12 +62,16 @@ async function checkSession() {
             showAdmin(user);
             return;
         }
-        if (response.status === 403) {
-            showLogin("Access denied. Admin role required.");
+        // Handle 401 (Unauthorized) and 403 (Forbidden) - both require login
+        if (response.status === 401 || response.status === 403) {
+            const message = response.status === 403 ? "Access denied. Admin role required." : null;
+            showLogin(message);
             return;
         }
-        showLogin();
+        // Other errors
+        showLogin("Unable to verify session.");
     } catch (error) {
+        console.error("Error checking session:", error);
         showLogin("Unable to reach the server.");
     }
 }
@@ -395,7 +400,299 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ============================================================================
-// Initialize
+// Category Management
+// ============================================================================
+
+// DOM Elements - Category Management
+const createCategoryButton = document.getElementById("create-category-button");
+const categoriesTableBody = document.getElementById("categories-table-body");
+const categorySearch = document.getElementById("category-search");
+const strategyFilter = document.getElementById("strategy-filter");
+const uploadForm = document.getElementById("upload-form");
+
+// DOM Elements - Category Modals
+const createCategoryModal = document.getElementById("create-category-modal");
+const editCategoryModal = document.getElementById("edit-category-modal");
+const deleteCategoryModal = document.getElementById("delete-category-modal");
+
+// State
+let allCategories = [];
+
+async function loadCategories() {
+    try {
+        const response = await fetch(`${API_URL}/admin/categories`, { credentials: "include" });
+        if (!response.ok) throw new Error("Failed to load categories");
+        
+        allCategories = await response.json();
+        renderCategories();
+        setStatus("Categories loaded.", "success");
+    } catch (error) {
+        console.error("Error loading categories:", error);
+        setStatus("Failed to load categories", "error");
+    }
+}
+
+function renderCategories() {
+    const searchTerm = categorySearch.value.toLowerCase();
+    const strategyValue = strategyFilter.value;
+    
+    let filtered = allCategories.filter(cat => {
+        const matchesSearch = cat.name.toLowerCase().includes(searchTerm);
+        const matchesStrategy = !strategyValue || cat.strategy_name === strategyValue;
+        return matchesSearch && matchesStrategy;
+    });
+    
+    if (filtered.length === 0) {
+        categoriesTableBody.innerHTML = '<tr><td colspan="5" class="empty">No categories found</td></tr>';
+        return;
+    }
+    
+    categoriesTableBody.innerHTML = filtered.map(cat => `
+        <tr>
+            <td>${escapeHtml(cat.name)}</td>
+            <td>${cat.strategy_name ? escapeHtml(cat.strategy_name) : '-'}</td>
+            <td>${cat.description ? escapeHtml(cat.description.substring(0, 50)) + '...' : '-'}</td>
+            <td>${new Date(cat.created_at).toLocaleDateString()}</td>
+            <td class="actions">
+                <button class="btn-small edit-category" data-id="${cat.id}">Edit</button>
+                <button class="btn-small delete-category" data-id="${cat.id}">Delete</button>
+            </td>
+        </tr>
+    `).join('');
+    
+    // Add event listeners
+    document.querySelectorAll('.edit-category').forEach(btn => {
+        btn.addEventListener('click', () => openEditCategoryModal(parseInt(btn.dataset.id)));
+    });
+    document.querySelectorAll('.delete-category').forEach(btn => {
+        btn.addEventListener('click', () => openDeleteCategoryModal(parseInt(btn.dataset.id)));
+    });
+}
+
+function openModal(modal) {
+    modal.classList.remove('hidden');
+}
+
+function closeModal(modal) {
+    modal.classList.add('hidden');
+}
+
+function openCreateCategoryModal() {
+    document.getElementById('create-category-form').reset();
+    openModal(createCategoryModal);
+}
+
+function openEditCategoryModal(categoryId) {
+    const category = allCategories.find(c => c.id === categoryId);
+    if (!category) return;
+    
+    document.getElementById('edit-category-id').value = categoryId;
+    document.getElementById('edit-category-name').value = category.name;
+    document.getElementById('edit-category-description').value = category.description || '';
+    document.getElementById('edit-category-strategy').value = category.strategy_name || '';
+    
+    openModal(editCategoryModal);
+}
+
+function openDeleteCategoryModal(categoryId) {
+    const category = allCategories.find(c => c.id === categoryId);
+    if (!category) return;
+    
+    document.getElementById('delete-category-id').value = categoryId;
+    document.getElementById('delete-category-name').textContent = category.name;
+    
+    openModal(deleteCategoryModal);
+}
+
+// Category Event Listeners
+createCategoryButton.addEventListener('click', openCreateCategoryModal);
+
+document.getElementById('create-category-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('create-category-name').value.trim();
+    const description = document.getElementById('create-category-description').value.trim();
+    const strategy_name = document.getElementById('create-category-strategy').value || null;
+    
+    if (!name) {
+        setStatus("Category name is required", "error");
+        return;
+    }
+    
+    try {
+        setStatus("Creating category...", "info");
+        const response = await fetch(`${API_URL}/admin/categories`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                description: description || null,
+                strategy_name
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || "Failed to create category");
+        }
+        
+        await loadCategories();
+        closeModal(createCategoryModal);
+        setStatus("Category created successfully", "success");
+    } catch (error) {
+        console.error("Error creating category:", error);
+        setStatus(error.message || "Failed to create category", "error");
+    }
+});
+
+document.getElementById('edit-category-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const categoryId = document.getElementById('edit-category-id').value;
+    const name = document.getElementById('edit-category-name').value.trim();
+    const description = document.getElementById('edit-category-description').value.trim();
+    const strategy_name = document.getElementById('edit-category-strategy').value || null;
+    
+    if (!name) {
+        setStatus("Category name is required", "error");
+        return;
+    }
+    
+    try {
+        setStatus("Updating category...", "info");
+        const response = await fetch(`${API_URL}/admin/categories/${categoryId}`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name,
+                description: description || null,
+                strategy_name
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || "Failed to update category");
+        }
+        
+        await loadCategories();
+        closeModal(editCategoryModal);
+        setStatus("Category updated successfully", "success");
+    } catch (error) {
+        console.error("Error updating category:", error);
+        setStatus(error.message || "Failed to update category", "error");
+    }
+});
+
+document.getElementById('confirm-delete-category').addEventListener('click', async () => {
+    const categoryId = document.getElementById('delete-category-id').value;
+    
+    try {
+        setStatus("Deleting category...", "info");
+        const response = await fetch(`${API_URL}/admin/categories/${categoryId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || "Failed to delete category");
+        }
+        
+        await loadCategories();
+        closeModal(deleteCategoryModal);
+        setStatus("Category deleted successfully", "success");
+    } catch (error) {
+        console.error("Error deleting category:", error);
+        setStatus(error.message || "Failed to delete category", "error");
+    }
+});
+
+// Upload Event Listeners
+uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const categoryName = document.getElementById('upload-category-name').value.trim();
+    const fileInput = document.getElementById('upload-json-file');
+    const textareaData = document.getElementById('upload-json-data').value.trim();
+    const overwrite = document.getElementById('upload-overwrite').checked;
+    
+    if (!categoryName) {
+        setStatus("Category name is required", "error");
+        return;
+    }
+    
+    let jsonData = textareaData;
+    
+    // If file is selected, read it
+    if (fileInput.files.length > 0) {
+        try {
+            jsonData = await readFileAsText(fileInput.files[0]);
+        } catch (error) {
+            setStatus("Error reading file: " + error.message, "error");
+            return;
+        }
+    }
+    
+    if (!jsonData) {
+        setStatus("Please select a JSON file or paste JSON data", "error");
+        return;
+    }
+    
+    let parsedJson;
+    try {
+        parsedJson = JSON.parse(jsonData);
+    } catch (error) {
+        setStatus("Invalid JSON format: " + error.message, "error");
+        return;
+    }
+    
+    try {
+        setStatus("Uploading data...", "info");
+        const response = await fetch(`${API_URL}/admin/uploads`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                category_name: categoryName,
+                json_data: parsedJson,
+                overwrite
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || "Failed to upload data");
+        }
+        
+        const result = await response.json();
+        await loadCategories();
+        uploadForm.reset();
+        setStatus(`Upload successful! Added ${result.events_inserted} events.`, "success");
+    } catch (error) {
+        console.error("Error uploading data:", error);
+        setStatus(error.message || "Failed to upload data", "error");
+    }
+});
+
+// File reading helper
+function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = (e) => reject(new Error("Failed to read file"));
+        reader.readAsText(file);
+    });
+}
+
+// Search and filter handlers
+categorySearch.addEventListener('input', renderCategories);
+strategyFilter.addEventListener('change', renderCategories);
+
+// ============================================================================
+// Modal Management
 // ============================================================================
 
 checkSession();

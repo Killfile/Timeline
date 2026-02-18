@@ -84,8 +84,66 @@
 
                 <!-- Timeline Categories Section -->
                 <div class="admin-card">
-                    <h3>Timeline Categories</h3>
-                    <p>Coming next: upload JSON files and manage categories.</p>
+                    <div class="card-header">
+                        <h3>Timeline Categories</h3>
+                        <button id="create-category-button" class="btn btn-primary">Create Category</button>
+                    </div>
+                    
+                    <div class="search-filters">
+                        <input id="category-search" type="search" placeholder="Search by name..." class="search-input">
+                        <select id="strategy-filter" class="filter-select">
+                            <option value="">All Strategies</option>
+                            <option value="timeline_of_food">Timeline of Food</option>
+                            <option value="timeline_of_roman_history">Timeline of Roman History</option>
+                            <option value="wars">Wars</option>
+                        </select>
+                    </div>
+
+                    <div id="categories-table-container" class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Strategy</th>
+                                    <th>Description</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="categories-table-body">
+                                <tr><td colspan="5" class="loading">Loading categories...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Upload Section -->
+                <div class="admin-card">
+                    <div class="card-header">
+                        <h3>Upload Timeline Data</h3>
+                    </div>
+                    
+                    <form id="upload-form" class="upload-form">
+                        <label>
+                            Category Name *
+                            <input id="upload-category-name" type="text" required placeholder="Name of the category">
+                        </label>
+                        <label>
+                            JSON File *
+                            <input id="upload-json-file" type="file" accept=".json" required>
+                            <small>Select a .json file to upload (or paste JSON below)</small>
+                        </label>
+                        <label>
+                            Or Paste JSON Data
+                            <textarea id="upload-json-data" placeholder='{"strategy": "...", "events": [...]}' rows="6"></textarea>
+                        </label>
+                        <label class="checkbox-label">
+                            <input id="upload-overwrite" type="checkbox"> Overwrite existing category if it exists
+                        </label>
+                        <div class="modal-actions">
+                            <button type="submit" class="btn btn-primary">Upload</button>
+                        </div>
+                    </form>
                 </div>
             </section>
         </main>
@@ -204,6 +262,92 @@
             <div class="modal-actions">
                 <button class="btn btn-secondary modal-cancel">Cancel</button>
                 <button id="confirm-delete" class="btn btn-danger">Delete User</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Category Modal -->
+    <div id="create-category-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Category</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <form id="create-category-form" class="modal-form">
+                <label>
+                    Name *
+                    <input id="create-category-name" type="text" required placeholder="Category name">
+                </label>
+                <label>
+                    Description
+                    <textarea id="create-category-description" placeholder="Optional description" rows="3"></textarea>
+                </label>
+                <label>
+                    Strategy
+                    <select id="create-category-strategy">
+                        <option value="">None</option>
+                        <option value="timeline_of_food">Timeline of Food</option>
+                        <option value="timeline_of_roman_history">Timeline of Roman History</option>
+                        <option value="wars">Wars</option>
+                    </select>
+                </label>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Category Modal -->
+    <div id="edit-category-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Category</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <form id="edit-category-form" class="modal-form">
+                <input type="hidden" id="edit-category-id">
+                <label>
+                    Name *
+                    <input id="edit-category-name" type="text" required placeholder="Category name">
+                </label>
+                <label>
+                    Description
+                    <textarea id="edit-category-description" placeholder="Optional description" rows="3"></textarea>
+                </label>
+                <label>
+                    Strategy
+                    <select id="edit-category-strategy">
+                        <option value="">None</option>
+                        <option value="timeline_of_food">Timeline of Food</option>
+                        <option value="timeline_of_roman_history">Timeline of Roman History</option>
+                        <option value="wars">Wars</option>
+                    </select>
+                </label>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Category Confirmation Modal -->
+    <div id="delete-category-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Delete Category</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="delete-category-id">
+                <p>Are you sure you want to delete category <strong id="delete-category-name"></strong>?</p>
+                <p class="warning">This will also delete all associated timeline events.</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary modal-cancel">Cancel</button>
+                <button id="confirm-delete-category" class="btn btn-danger">Delete Category</button>
             </div>
         </div>
     </div>

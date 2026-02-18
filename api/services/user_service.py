@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 from email_validator import validate_email, EmailNotValidError
 
-from auth.password_service import hash_password
-from models.user import fetch_user_by_email, fetch_user_by_id, fetch_user_roles
+from ..auth.password_service import hash_password
+from ..models.user import fetch_user_by_email, fetch_user_by_id, fetch_user_roles
 
 
 VALID_ROLES = {"admin", "user"}

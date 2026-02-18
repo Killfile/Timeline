@@ -3,7 +3,11 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime
-from services.user_service import (
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from api.services.user_service import (
     create_user,
     get_user,
     list_users,
@@ -27,9 +31,9 @@ def mock_conn():
 class TestCreateUser:
     """Tests for create_user function."""
 
-    @patch('services.user_service.fetch_user_by_email')
-    @patch('services.user_service.fetch_user_by_id')
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_by_email')
+    @patch('api.services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_create_user_success(self, mock_fetch_roles, mock_fetch_by_id, mock_fetch_by_email, mock_conn):
         """Test successful user creation."""
         # Mock no existing user
@@ -63,7 +67,7 @@ class TestCreateUser:
         assert result["roles"] == ["user"]
         assert cursor.execute.call_count == 3  # Insert user, fetch role IDs, assign roles
 
-    @patch('services.user_service.fetch_user_by_email')
+    @patch('api.services.user_service.fetch_user_by_email')
     def test_create_user_duplicate_email(self, mock_fetch_by_email, mock_conn):
         """Test creating user with duplicate email."""
         # Mock existing user
@@ -115,8 +119,8 @@ class TestCreateUser:
 class TestGetUser:
     """Tests for get_user function."""
 
-    @patch('services.user_service.fetch_user_by_id')
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_get_user_success(self, mock_fetch_roles, mock_fetch_by_id, mock_conn):
         """Test successful user retrieval."""
         mock_fetch_by_id.return_value = {
@@ -134,7 +138,7 @@ class TestGetUser:
         assert result["email"] == "test@example.com"
         assert result["roles"] == ["user"]
 
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_get_user_not_found(self, mock_fetch_by_id, mock_conn):
         """Test getting non-existent user."""
         mock_fetch_by_id.return_value = None
@@ -147,7 +151,7 @@ class TestGetUser:
 class TestListUsers:
     """Tests for list_users function."""
 
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_list_users_default_params(self, mock_fetch_roles, mock_conn):
         """Test listing users with default parameters."""
         cursor = mock_conn.cursor.return_value
@@ -165,7 +169,7 @@ class TestListUsers:
         assert result["limit"] == 20
         assert result["offset"] == 0
 
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_list_users_with_email_filter(self, mock_fetch_roles, mock_conn):
         """Test listing users with email filter."""
         cursor = mock_conn.cursor.return_value
@@ -180,7 +184,7 @@ class TestListUsers:
         assert len(result["users"]) == 1
         assert "admin" in result["users"][0]["email"]
 
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_list_users_with_role_filter(self, mock_fetch_roles, mock_conn):
         """Test listing users with role filter."""
         cursor = mock_conn.cursor.return_value
@@ -192,7 +196,7 @@ class TestListUsers:
 
         assert len(result["users"]) == 0
 
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_list_users_inactive_only(self, mock_fetch_roles, mock_conn):
         """Test listing inactive users."""
         cursor = mock_conn.cursor.return_value
@@ -210,8 +214,8 @@ class TestListUsers:
 class TestUpdateUser:
     """Tests for update_user function."""
 
-    @patch('services.user_service.fetch_user_by_id')
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_update_user_email(self, mock_fetch_roles, mock_fetch_by_id, mock_conn):
         """Test updating user email."""
         # First call to check user exists
@@ -226,8 +230,8 @@ class TestUpdateUser:
 
         assert result["email"] == "new@example.com"
 
-    @patch('services.user_service.fetch_user_by_id')
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_update_user_roles(self, mock_fetch_roles, mock_fetch_by_id, mock_conn):
         """Test updating user roles."""
         cursor = mock_conn.cursor.return_value
@@ -243,8 +247,8 @@ class TestUpdateUser:
 
         assert "admin" in result["roles"]
 
-    @patch('services.user_service.fetch_user_by_id')
-    @patch('services.user_service.fetch_user_roles')
+    @patch('api.services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_roles')
     def test_update_user_deactivate(self, mock_fetch_roles, mock_fetch_by_id, mock_conn):
         """Test deactivating user."""
         mock_fetch_by_id.side_effect = [
@@ -257,7 +261,7 @@ class TestUpdateUser:
 
         assert result["is_active"] is False
 
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_update_user_not_found(self, mock_fetch_by_id, mock_conn):
         """Test updating non-existent user."""
         mock_fetch_by_id.return_value = None
@@ -265,7 +269,7 @@ class TestUpdateUser:
         with pytest.raises(ValueError, match="not found"):
             update_user(mock_conn, user_id=999, email="new@example.com")
 
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_update_user_duplicate_email(self, mock_fetch_by_id, mock_conn):
         """Test updating to duplicate email."""
         cursor = mock_conn.cursor.return_value
@@ -279,7 +283,7 @@ class TestUpdateUser:
 class TestDeleteUser:
     """Tests for delete_user function."""
 
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_delete_user_success(self, mock_fetch_by_id, mock_conn):
         """Test successful user deletion (deactivation)."""
         cursor = mock_conn.cursor.return_value
@@ -289,7 +293,7 @@ class TestDeleteUser:
 
         cursor.execute.assert_called()  # Should update is_active = False
 
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_delete_user_not_found(self, mock_fetch_by_id, mock_conn):
         """Test deleting non-existent user."""
         mock_fetch_by_id.return_value = None
@@ -301,8 +305,8 @@ class TestDeleteUser:
 class TestChangeUserPassword:
     """Tests for change_user_password function."""
 
-    @patch('services.user_service.fetch_user_by_id')
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_change_password_success(self, mock_fetch_by_id, mock_conn):
         """Test successful password change."""
         cursor = mock_conn.cursor.return_value
@@ -317,7 +321,7 @@ class TestChangeUserPassword:
         with pytest.raises(ValueError, match="at least 8 characters"):
             change_user_password(mock_conn, user_id=1, new_password="weak")
 
-    @patch('services.user_service.fetch_user_by_id')
+    @patch('api.services.user_service.fetch_user_by_id')
     def test_change_password_user_not_found(self, mock_fetch_by_id, mock_conn):
         """Test password change for non-existent user."""
         mock_fetch_by_id.return_value = None
