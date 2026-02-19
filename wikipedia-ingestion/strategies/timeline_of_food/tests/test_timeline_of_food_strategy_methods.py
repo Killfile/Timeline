@@ -182,9 +182,13 @@ class TestTimelineOfFoodStrategyParse:
         
         assert "confidence_distribution" in result.parse_metadata
         confidence = result.parse_metadata["confidence_distribution"]
+        # Verify all required keys are present (per import_schema.json)
         assert "explicit" in confidence
         assert "inferred" in confidence
         assert "approximate" in confidence
+        assert "contentious" in confidence
+        assert "fallback" in confidence
+        assert "legendary" in confidence
 
 
 class TestFoodEventTitleGeneration:

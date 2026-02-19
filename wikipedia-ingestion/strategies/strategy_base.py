@@ -208,6 +208,35 @@ class IngestionStrategy(ABC):
         pass
 
 
+def normalize_confidence_distribution(dist: dict | None) -> dict:
+    """Normalize a confidence distribution dict to include all required keys.
+    
+    Ensures all confidence level keys (explicit, inferred, approximate, contentious,
+    fallback, legendary) are present with integer counts, even if zero. This guarantees
+    the confidence_distribution metadata always matches the import_schema.json requirements.
+    
+    Args:
+        dist: Input confidence distribution dict, or None for empty distribution.
+        
+    Returns:
+        Dict with all six confidence keys present and zero-filled if needed.
+    """
+    if dist is None:
+        dist = {}
+    
+    # Ensure all required keys exist with default of 0
+    normalized = {
+        "explicit": int(dist.get("explicit", 0)),
+        "inferred": int(dist.get("inferred", 0)),
+        "approximate": int(dist.get("approximate", 0)),
+        "contentious": int(dist.get("contentious", 0)),
+        "fallback": int(dist.get("fallback", 0)),
+        "legendary": int(dist.get("legendary", 0)),
+    }
+    
+    return normalized
+
+
 def validate_event_dict(event: dict) -> tuple[bool, str]:
     """Validate that an event dict conforms to the expected schema.
     

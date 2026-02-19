@@ -191,13 +191,15 @@ class WarsStrategy(IngestionStrategy):
         log_info(f"[{self.name()}] Parsed {len(all_events)} war events")
         
         # Calculate confidence distribution (wars typically have explicit dates)
-        confidence_dist = {
+        from strategies.strategy_base import normalize_confidence_distribution
+        
+        confidence_dist = normalize_confidence_distribution({
             "explicit": len(all_events),
             "inferred": 0,
             "approximate": 0,
             "contentious": 0,
             "fallback": 0,
-        }
+        })
 
         return ParseResult(
             strategy_name=self.name(),

@@ -1055,13 +1055,15 @@ class ListOfYearsStrategy(IngestionStrategy):
         log_info(f"[{self.name()}] Parsed {len(all_events)} events")
         
         # Calculate confidence distribution (most events are explicit year-based)
-        confidence_dist = {
+        from strategies.strategy_base import normalize_confidence_distribution
+        
+        confidence_dist = normalize_confidence_distribution({
             "explicit": len(all_events),
             "inferred": 0,
             "approximate": 0,
             "contentious": 0,
             "fallback": 0,
-        }
+        })
         
         # Count excluded (undated) events
         total_excluded = sum(self.exclusions_agg_counts.values())

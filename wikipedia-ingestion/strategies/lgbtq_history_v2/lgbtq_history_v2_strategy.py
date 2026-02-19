@@ -71,13 +71,15 @@ class LgbtqHistoryV2Strategy(IngestionStrategy):
         log_info(f"Total events parsed: {len(all_events)}")
         
         # Calculate confidence distribution (LGBTQ events typically have explicit dates)
-        confidence_dist = {
+        from strategies.strategy_base import normalize_confidence_distribution
+        
+        confidence_dist = normalize_confidence_distribution({
             "explicit": len(all_events),
             "inferred": 0,
             "approximate": 0,
             "contentious": 0,
             "fallback": 0,
-        }
+        })
         
         return ParseResult(
             strategy_name=self.name(),

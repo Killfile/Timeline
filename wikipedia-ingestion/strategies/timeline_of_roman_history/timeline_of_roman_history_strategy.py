@@ -320,17 +320,19 @@ class TimelineOfRomanHistoryStrategy(IngestionStrategy):
             Dictionary with confidence level counts matching schema requirements
         """
         from collections import Counter
+        from strategies.strategy_base import normalize_confidence_distribution
+        
         confidence_counts = Counter(event.confidence.value for event in self.roman_events)
         
         # Schema requires these specific keys
-        return {
+        return normalize_confidence_distribution({
             "explicit": confidence_counts.get("explicit", 0),
             "inferred": confidence_counts.get("inferred", 0),
             "approximate": confidence_counts.get("approximate", 0),
             "contentious": confidence_counts.get("contentious", 0),
             "fallback": confidence_counts.get("fallback", 0),
             "legendary": confidence_counts.get("legendary", 0),
-        }
+        })
     
     def generate_artifacts(self, parse_result: ParseResult) -> ArtifactData:
         """Generate JSON artifact file with all events.

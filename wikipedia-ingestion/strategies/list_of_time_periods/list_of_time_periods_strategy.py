@@ -138,13 +138,15 @@ class ListOfTimePeriodsStrategy(IngestionStrategy):
         log_info(f"Total extracted: {len(all_events)} time period events from {len(sections_found)} sections")
         
         # Calculate confidence distribution (time periods are approximate by nature)
-        confidence_dist = {
+        from strategies.strategy_base import normalize_confidence_distribution
+        
+        confidence_dist = normalize_confidence_distribution({
             "explicit": 0,
             "inferred": 0,
             "approximate": len(all_events),
             "contentious": 0,
             "fallback": 0,
-        }
+        })
         
         return ParseResult(
             strategy_name=self.name(),

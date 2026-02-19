@@ -241,13 +241,15 @@ class BespokeEventsStrategy(IngestionStrategy):
         )
         
         # Calculate confidence distribution (bespoke events are manually curated, so explicit)
-        confidence_dist = {
+        from strategies.strategy_base import normalize_confidence_distribution
+        
+        confidence_dist = normalize_confidence_distribution({
             "explicit": len(valid_events),
             "inferred": 0,
             "approximate": 0,
             "contentious": 0,
             "fallback": 0,
-        }
+        })
         
         return ParseResult(
             strategy_name=self.name(),

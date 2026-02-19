@@ -369,14 +369,17 @@ class TimelineOfFoodStrategy(IngestionStrategy):
         """Calculate distribution of confidence levels across events.
         
         Returns:
-            Dictionary mapping confidence levels to counts
+            Dictionary mapping confidence levels to counts, with all keys normalized
         """
+        from strategies.strategy_base import normalize_confidence_distribution
+        
         distribution = {
             "explicit": 0,
             "inferred": 0,
             "approximate": 0,
             "contentious": 0,
             "fallback": 0,
+            "legendary": 0,
         }
         
         for event in self.events:
@@ -384,7 +387,7 @@ class TimelineOfFoodStrategy(IngestionStrategy):
             if confidence in distribution:
                 distribution[confidence] += 1
         
-        return distribution
+        return normalize_confidence_distribution(distribution)
     
     def generate_artifacts(self, parse_result: ParseResult) -> ArtifactData:
         """Generate JSON artifact file with all events.
