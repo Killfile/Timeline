@@ -337,7 +337,7 @@ class TestExpectedEventFixtures:
         
         # Check key properties of each event
         for actual, expected in zip(actual_events, expected_events):
-            assert actual["title"] == expected["title"]
+            assert actual["title"].strip() == expected["title"].strip()
             assert actual["start_year"] == expected["start_year"]
             assert actual["end_year"] == expected["end_year"]
             assert actual["is_bc_start"] == expected["is_bc_start"]

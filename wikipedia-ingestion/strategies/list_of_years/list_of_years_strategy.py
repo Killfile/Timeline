@@ -779,7 +779,8 @@ class ListOfYearsStrategy(IngestionStrategy):
             effective_is_bc = bullet_span.is_bc
             span_match_notes = bullet_span.match_type
 
-        category_value = tag or None
+        # Category is required by schema, default to "Uncategorized" if no tag provided
+        category_value = tag if tag else "Uncategorized"
 
         # Compute weight from bullet_span if available, otherwise use default for year pages
         weight = bullet_span.weight if bullet_span and hasattr(bullet_span, 'weight') and bullet_span.weight is not None else 365

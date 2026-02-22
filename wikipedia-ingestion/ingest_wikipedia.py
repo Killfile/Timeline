@@ -80,7 +80,6 @@ def ingest(strategy_names: list[str] | None = None) -> None:
                 "bespoke_events",
                 "time_periods",
                 "wars",
-                "lgbtq_history",
                 "lgbtq_history_v2",
                 "timeline_of_food",
                 "timeline_of_roman_history",

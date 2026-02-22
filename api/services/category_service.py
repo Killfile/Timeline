@@ -419,6 +419,7 @@ def process_upload(
                 cur.execute("""
                     INSERT INTO historical_events (
                         event_key,
+                        category_id,
                         title,
                         description,
                         start_year,
@@ -433,19 +434,19 @@ def process_upload(
                         precision,
                         category,
                         wikipedia_url,
-                        category_id,
                         strategy_id
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             (SELECT id FROM strategies WHERE name = %s LIMIT 1))
                     ON CONFLICT (event_key) DO UPDATE SET
+                        category_id = EXCLUDED.category_id,
                         title = EXCLUDED.title,
                         description = EXCLUDED.description,
                         category = EXCLUDED.category,
-                        category_id = EXCLUDED.category_id,
                         updated_at = NOW()
                 """, (
                     event_key,
+                    category_id,
                     event["title"],
                     event.get("description"),
                     event["start_year"],
@@ -460,7 +461,6 @@ def process_upload(
                     event.get("precision", 1.0),
                     event.get("category"),
                     event.get("url"),
-                    category_id,
                     upload_data.get("strategy")
                 ))
                 result["events_inserted"] += 1

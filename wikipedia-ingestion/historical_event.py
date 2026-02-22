@@ -123,8 +123,34 @@ class HistoricalEvent:
         
         Returns:
             Dictionary representation suitable for JSON serialization.
+            Ensures all fields conform to schema constraints.
         """
-        return asdict(self)
+        data = asdict(self)
+        
+        # Ensure category is never None (schema requires it to be string)
+        if data.get("category") is None:
+            data["category"] = "Uncategorized"
+
+        # Ensure description is a string (schema requires string, not null)
+        if data.get("description") is None:
+            data["description"] = ""
+
+        # historical_events.title is VARCHAR(500) in database schema
+        # Keep artifacts upload-safe by enforcing this limit at serialization time
+        if isinstance(data.get("title"), str):
+            data["title"] = data["title"].strip()[:500]
+        
+        # _debug_extraction should be string or null per schema, not a dict
+        # If it's a dict, convert to JSON string or set to None
+        if isinstance(data.get("_debug_extraction"), dict):
+            import json
+            data["_debug_extraction"] = json.dumps(data["_debug_extraction"])
+        
+        # Precision must be <= 100 per schema, cap if needed
+        if isinstance(data.get("precision"), (int, float)):
+            data["precision"] = min(float(data["precision"]), 100.0)
+        
+        return data
     
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "HistoricalEvent":

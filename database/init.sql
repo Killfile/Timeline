@@ -43,7 +43,7 @@ BEGIN
     ) THEN
         ALTER TABLE historical_events
             ADD CONSTRAINT uq_historical_events_identity
-            UNIQUE (title, start_year, end_year, is_bc_start, is_bc_end);
+            UNIQUE (title, start_year, end_year, is_bc_start, is_bc_end, wikipedia_url);
     END IF;
 END $$;
 

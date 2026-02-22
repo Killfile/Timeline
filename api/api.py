@@ -918,8 +918,9 @@ def upload_json_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         import traceback
-        logger.error("Failed to upload category", extra={"error": str(e), "traceback": traceback.format_exc(), "admin_id": principal.user_id})
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
+        error_details = traceback.format_exc()
+        logger.error("Failed to upload category", extra={"error": str(e), "traceback": error_details, "admin_id": principal.user_id})
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Upload failed: {str(e)}")
     finally:
         conn.close()
 
